@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentRL 意图路由对话</title>
+<style>
+  :root {
+    --bg: #191919;
+    --bg-soft: #1f1f1f;
+    --sidebar: #141414;
+    --border: #2a2a2a;
+    --text: #e5e5e5;
+    --text-dim: #8a8a8a;
+    --accent: #4f9cff;
+    --user-bubble: #2c2c2c;
+    --assistant-bubble: transparent;
+    --thinking-bg: #232323;
+    --danger: #ff6b6b;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* ---------- 侧边栏 ---------- */
+  .sidebar {
+    width: 260px;
+    min-width: 260px;
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar-head {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .sidebar-head .logo {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), #7b5cff);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 700; color: #fff;
+  }
+  .sidebar-head .title { font-size: 15px; font-weight: 600; }
+  .new-btn {
+    margin: 12px 14px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    transition: background .15s;
+  }
+  .new-btn:hover { background: var(--bg-soft); border-color: var(--accent); }
+  .conv-list { flex: 1; overflow-y: auto; padding: 0 8px; }
+  .conv-item {
+    padding: 10px 12px;
+    margin-bottom: 4px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    color: var(--text-dim);
+    font-size: 13px;
+    transition: background .15s;
+    position: relative;
+    border: 1px solid transparent;
+  }
+  .conv-item:hover { background: var(--bg-soft); color: var(--text); }
+  .conv-item.active { background: var(--bg-soft); color: var(--text); border-color: var(--border); }
+  .conv-item .msg-count { margin-left: auto; font-size: 11px; color: var(--text-dim); }
+  .conv-item .del-btn {
+    display: none;
+    border: none; background: none; color: var(--text-dim);
+    cursor: pointer; font-size: 13px; padding: 0 2px;
+  }
+  .conv-item:hover .del-btn { display: inline-block; }
+  .conv-item .del-btn:hover { color: var(--danger); }
+  .sidebar-foot {
+    padding: 12px 14px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+  .sidebar-foot code {
+    color: var(--accent);
+    font-family: Consolas, monospace;
+  }
+
+  /* ---------- 主区域 ---------- */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .chat-header {
+    height: 52px;
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+    font-size: 15px;
+    color: var(--text-dim);
+  }
+  .chat-header .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #34d399;
+    animation: pulse 1.6s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 0;
+    scroll-behavior: smooth;
+  }
+  .message {
+    max-width: 720px;
+    margin: 0 auto 20px;
+    padding: 0 20px;
+    display: flex;
+    flex-direction: column;
+  }
+  .bubble {
+    max-width: 640px;
+    line-height: 1.75;
+    font-size: 15px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .message.user { align-items: flex-end; }
+  .message.user .bubble {
+    background: var(--user-bubble);
+    padding: 10px 14px;
+    border-radius: 14px 14px 4px 14px;
+  }
+  .message.assistant { align-items: flex-start; }
+  .message.assistant .bubble {
+    padding: 10px 14px;
+    border-radius: 14px 14px 14px 4px;
+  }
+
+  /* 思考过程折叠块 */
+  .thinking {
+    width: 100%;
+    margin-bottom: 8px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--thinking-bg);
+    overflow: hidden;
+  }
+  .thinking-trigger {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-dim);
+    user-select: none;
+  }
+  .thinking-trigger .caret { transition: transform .2s; font-size: 10px; }
+  .thinking.open .caret { transform: rotate(90deg); }
+  .thinking-trigger .badge {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 20px;
+    padding: 1px 8px;
+  }
+  .thinking-content { display: none; padding: 0 14px 12px; }
+  .thinking.open .thinking-content { display: block; }
+  .t-step { border-left: 2px solid var(--accent); padding: 6px 0 6px 12px; margin-bottom: 10px; }
+  .t-step .t-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+  .t-step .t-detail { font-size: 13px; color: var(--text-dim); }
+  .t-step .t-extra { font-size: 12px; color: var(--text-dim); opacity: .85; margin-top: 2px; word-break: break-all; }
+  .react-step { border-left-color: #34d399; }
+  .react-step .t-title { color: #34d399; }
+  .react-badge { color: #34d399; border-color: #34d399; }
+
+  .timestamp { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+
+  /* ---------- 输入区 ---------- */
+  .input-area {
+    padding: 12px 20px 20px;
+    display: flex;
+    justify-content: center;
+  }
+  .input-box {
+    width: 100%;
+    max-width: 760px;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    transition: border-color .15s;
+  }
+  .input-box:focus-within { border-color: var(--accent); }
+  #msg-input {
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.6;
+    max-height: 160px;
+    min-height: 40px;
+  }
+  .input-bottom {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 6px;
+  }
+  .hint { font-size: 12px; color: var(--text-dim); }
+  #send-btn {
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    transition: opacity .15s;
+  }
+  #send-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+  .empty { text-align: center; color: var(--text-dim); font-size: 14px; margin-top: 18vh; }
+  .empty .big { font-size: 40px; margin-bottom: 12px; opacity: .5; }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-head">
+    <div class="logo">RL</div>
+    <div class="title">AgentRL · 意图路由</div>
+  </div>
+  <button class="new-btn" onclick="newConversation()">＋ 新建对话</button>
+  <div class="conv-list" id="conv-list"></div>
+  <div class="sidebar-foot">
+    后端: <code>127.0.0.1:5000</code><br>
+    点击「新建对话」即开启<b>真正的 0 上下文</b>会话
+  </div>
+</div>
+
+<div class="main">
+  <div class="chat-header">
+    <span class="dot"></span>
+    <span id="header-title">AgentRL · 意图路由对话</span>
+  </div>
+
+  <div class="messages" id="messages"></div>
+
+  <div class="input-area">
+    <div class="input-box">
+      <textarea id="msg-input" placeholder="描述你的意图，例如：为我找到红警3的快捷方式和应用文件结构…"></textarea>
+      <div class="input-bottom">
+        <span class="hint">Enter 发送 · Shift+Enter 换行</span>
+        <button id="send-btn" onclick="sendMessage()">↑</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = location.protocol.startsWith('http')
+  ? ''                       // 由服务端托管(同源, 免 CORS)
+  : 'http://127.0.0.1:5000'; // 直接双击打开 HTML 时走绝对地址
+
+let currentId = localStorage.getItem('agentrl_active_conv') || null;
+let busy = false;
+
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ---------------- 会话管理 ---------------- */
+async function api(path, options) {
+  const resp = await fetch(API_BASE + path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || ('HTTP ' + resp.status));
+  }
+  return resp.json();
+}
+
+async function refreshConversations() {
+  try {
+    const data = await api('/api/conversations');
+    const list = data.conversations || [];
+    const box = $('conv-list');
+    if (!list.length) { box.innerHTML = '<div style="padding:14px;color:#666;font-size:12px">暂无会话</div>'; return; }
+    box.innerHTML = '';
+    list.forEach(c => {
+      const item = document.createElement('div');
+      item.className = 'conv-item' + (c.id === currentId ? ' active' : '');
+      item.innerHTML =
+        '<span title="点击打开">💬 ' + esc(c.title || '未命名对话') + '</span>' +
+        '<span class="msg-count">' + (c.message_count ? c.message_count + '条' : '') + '</span>' +
+        '<span class="del-btn" title="删除对话">×</span>';
+      item.onclick = e => {
+        if (e.target.classList.contains('del-btn')) { deleteConversation(c.id); return; }
+        openConversation(c.id);
+      };
+      box.appendChild(item);
+    });
+  } catch (e) { console.error(e); }
+}
+
+async function newConversation() {
+  try {
+    const data = await api('/api/conversations', { method: 'POST' });
+    currentId = data.conversation_id;
+    localStorage.setItem('agentrl_active_conv', currentId);
+    clearMessages('新对话已创建，上下文已清空');
+    refreshConversations();
+  } catch (e) { alert('新建失败: ' + e.message); }
+}
+
+async function openConversation(id) {
+  currentId = id;
+  localStorage.setItem('agentrl_active_conv', id);
+  try {
+    const data = await api('/api/conversations/' + id + '/messages');
+    $('header-title').textContent = data.title ? '💬 ' + data.title : '对话';
+    renderMessages(data.messages || []);
+  } catch (e) { console.error(e); }
+  refreshConversations();
+}
+
+async function deleteConversation(id) {
+  if (!confirm('确定删除该对话？')) return;
+  try {
+    await api('/api/conversations/' + id, { method: 'DELETE' });
+    if (currentId === id) { currentId = null; localStorage.removeItem('agentrl_active_conv'); clearMessages(''); }
+    refreshConversations();
+  } catch (e) { alert('删除失败: ' + e.message); }
+}
+
+/* ---------------- 消息渲染 ---------------- */
+function clearMessages(hint) {
+  $('messages').innerHTML = '';
+  $('header-title').textContent = 'AgentRL · 意图路由对话';
+  if (hint) {
+    $('messages').innerHTML = '<div class="empty"><div class="big">✨</div><div>' + esc(hint) + '</div></div>';
+  }
+}
+
+function thinkingHTML(steps) {
+  if (!steps || !steps.length) return '';
+  const body = steps.map(s => {
+    const isReact = s.title && s.title.includes('ReAct');
+    const cls = isReact ? 't-step react-step' : 't-step';
+    return '<div class="' + cls + '">' +
+      '<div class="t-title">' + esc(s.title || '') + '</div>' +
+      '<div class="t-detail">' + esc(s.detail || '') + '</div>' +
+      (s.extra ? '<div class="t-extra">' + esc(s.extra) + '</div>' : '') +
+    '</div>';
+  }).join('');
+  const hasReact = steps.some(s => s.title && s.title.includes('ReAct'));
+  const badge = hasReact ? '<span class="badge react-badge">ReAct</span>' : '<span class="badge">已分类</span>';
+  return '<div class="thinking">' +
+    '<div class="thinking-trigger" onclick="toggleThinking(this)">' +
+      '<span class="caret">▶</span> 思考过程（' + steps.length + ' 步）' +
+      badge +
+    '</div>' +
+    '<div class="thinking-content">' + body + '</div>' +
+  '</div>';
+}
+
+function toggleThinking(el) {
+  el.parentElement.classList.toggle('open');
+}
+
+function messageHTML(role, content, thinking, ts) {
+  const time = ts ? '<div class="timestamp">' + esc(ts) + '</div>' : '';
+  if (role === 'user') {
+    return '<div class="message user"><div class="bubble">' + esc(content) + '</div>' + time + '</div>';
+  }
+  return '<div class="message assistant">' +
+    thinkingHTML(thinking) +
+    '<div class="bubble">' + esc(content) + '</div>' + time +
+  '</div>';
+}
+
+function renderMessages(messages) {
+  $('messages').innerHTML = messages.map(m =>
+    messageHTML(m.role, m.content, m.thinking, m.timestamp)).join('');
+  scrollBottom();
+}
+
+function appendMessage(message) {
+  const div = document.createElement('div');
+  div.innerHTML = messageHTML(message.role, message.content, message.thinking || [], message.timestamp);
+  $('messages').appendChild(div.firstChild);
+  scrollBottom();
+}
+
+function scrollBottom() {
+  const box = $('messages');
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ---------------- 发送 ---------------- */
+async function sendMessage() {
+  const input = $('msg-input');
+  const text = input.value.trim();
+  if (!text || busy) return;
+  busy = true;
+  $('send-btn').disabled = true;
+
+  if (!currentId) {
+    try {
+      const d = await api('/api/conversations', { method: 'POST' });
+      currentId = d.conversation_id;
+      localStorage.setItem('agentrl_active_conv', currentId);
+      $('messages').innerHTML = '';
+    } catch (e) {
+      busy = false; $('send-btn').disabled = false;
+      appendMessage({ role: 'assistant', content: '无法连接后端服务 (http://127.0.0.1:5000)。\n\n请确保已启动 chat_server：\n  python -m uvicorn chat_server:app --host 127.0.0.1 --port 5000\n\n或双击 start_chat.bat 启动。', thinking: [], timestamp: '' });
+      return;
+    }
+  }
+
+  // 用户消息先上屏
+  input.value = '';
+  autoResize();
+  const userMsg = { role: 'user', content: text, thinking: [], timestamp: new Date().toLocaleString('zh-CN') };
+  appendMessage(userMsg);
+
+  // 占位回答（打点动画）
+  const tmp = document.createElement('div');
+  tmp.innerHTML = messageHTML('assistant', '正在思考…', [], '');
+  const placeholder = tmp.firstChild;
+  $('messages').appendChild(placeholder);
+  scrollBottom();
+
+  try {
+    const data = await api('/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({ conversation_id: currentId, message: text }),
+    });
+    placeholder.remove();
+    appendMessage({
+      role: 'assistant',
+      content: data.reply,
+      thinking: data.thinking || [],
+      timestamp: new Date().toLocaleString('zh-CN'),
+    });
+    $('header-title').textContent = data.title ? '💬 ' + data.title : '对话';
+    refreshConversations();
+  } catch (e) {
+    placeholder.remove();
+    let errMsg = '请求失败: ' + e.message;
+    if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
+      errMsg = '无法连接后端服务 (http://127.0.0.1:5000)\n\n可能原因：\n1. chat_server 未启动 → 运行 start_chat.bat\n2. 端口 5000 被占用 → 检查 netstat -ano | findstr 5000\n3. 防火墙阻止 → 添加例外规则';
+    }
+    appendMessage({ role: 'assistant', content: errMsg, thinking: [], timestamp: '' });
+  }
+  busy = false;
+  $('send-btn').disabled = false;
+  input.focus();
+}
+
+/* ---------------- 输入框 ---------------- */
+function autoResize() {
+  const el = $('msg-input');
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+}
+$('msg-input').addEventListener('input', autoResize);
+$('msg-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+/* ---------------- 启动 ---------------- */
+(async function init() {
+  try {
+    await refreshConversations();
+    if (currentId) {
+      openConversation(currentId);
+    } else if (location.protocol.startsWith('http')) {
+      newConversation();
+    } else {
+      clearMessages('请输入你的第一条指令');
+    }
+  } catch (e) {
+    clearMessages('无法连接后端服务 (http://127.0.0.1:5000)\n\n请先启动服务器：\n  双击 start_chat.bat\n或手动运行：\n  python -m uvicorn chat_server:app --host 127.0.0.1 --port 5000');
+  }
+})();
+</script>
+</body>
+</html>

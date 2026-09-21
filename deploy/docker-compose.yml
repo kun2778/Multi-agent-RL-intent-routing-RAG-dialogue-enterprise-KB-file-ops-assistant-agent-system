@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  # AgentRL Application
+  agentrl:
+    build: ..
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - VAULT_ADDR=${VAULT_ADDR}
+      - VAULT_TOKEN=${VAULT_TOKEN}
+      - OPENAI_ADMIN_KEY=${OPENAI_ADMIN_KEY}
+      - OPENAI_ORG_ID=${OPENAI_ORG_ID}
+    depends_on:
+      - vault
+      - gateway
+    volumes:
+      - ../config:/app/config
+      - ../providers:/app/providers
+      - ../mcp_server:/app/mcp_server
+      - agentrl-data:/app/data
+    command: python -X utf8 main.py
+    restart: unless-stopped
+
+  # MCP Audit Server
+  mcp-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.mcp
+    ports:
+      - "3000:3000"
+    environment:
+      - MCP_TRANSPORT=sse
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=3000
+      - PYTHONPATH=/app
+    volumes:
+      - ../mcp_server:/app/mcp_server
+      - agentrl-data:/app/data
+    depends_on:
+      - agentrl
+    command: python -m mcp_server.server --transport sse --host 0.0.0.0 --port 3000
+    restart: unless-stopped
+
+  # API Gateway
+  gateway:
+    build: ./gateway
+    ports:
+      - "8080:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - VAULT_ADDR=${VAULT_ADDR}
+      - VAULT_TOKEN=${VAULT_TOKEN}
+      - GATEWAY_HOST=0.0.0.0
+      - GATEWAY_PORT=8000
+    depends_on:
+      - vault
+    volumes:
+      - ../config:/app/config
+      - ./gateway:/app/gateway
+    command: uvicorn gateway.main:gateway_app --host 0.0.0.0 --port 8000 --workers 4
+    restart: unless-stopped
+
+  # HashiCorp Vault
+  vault:
+    image: vault:1.15
+    ports:
+      - "8200:8200"
+    environment:
+      - VAULT_ADDR=http://0.0.0.0:8200
+      - VAULT_DEV_ROOT_TOKEN_ID=${VAULT_ROOT_TOKEN:-root}
+    volumes:
+      - ./vault/config.hcl:/vault/config/config.hcl:ro
+      - ./vault/policies:/vault/policies:ro
+      - vault-data:/vault/data
+    cap_add:
+      - IPC_LOCK
+    command: vault server -config=/vault/config/config.hcl
+    restart: unless-stopped
+
+  # Redis for caching and rate limiting
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+  # PostgreSQL for usage tracking
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=agentrl
+      - POSTGRES_USER=agentrl
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  vault-data:
+  redis-data:
+  pg-data:
+  agentrl-data:

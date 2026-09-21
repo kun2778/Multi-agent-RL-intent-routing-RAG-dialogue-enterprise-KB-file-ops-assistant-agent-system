@@ -1,0 +1,45 @@
+# .env files and sensitive data
+.env
+.env.local
+.env.*.local
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Runtime directory (caches, temp, logs, db, faiss, workspace, conversations, exports, backups)
+.runtime/
+
+# Cache and temporary files
+__pycache__/
+*.pyc
+*.pyo
+.cache/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Deployment
+deploy/**/config.hcl
+deploy/**/policies/*.hcl
+
+# Logs
+*.log
+
+# Config with secrets (never commit actual secrets)
+# .env files are gitignored
+config/secrets.yaml
+
+# Persisted RL model checkpoints (large binary files)
+models/

@@ -1,0 +1,3501 @@
+text,label
+创建 notes.txt 然后写 性能优化方案,add_file
+可以帮我更新 model.py 的设置谢谢,modify_file
+更新 style.css 的代码,modify_file
+你能做什么？,vague
+帮我更新一下 utils.js,modify_file
+综合分析系统性能？,deep_search
+生命的意义是什么,vague
+查一下 需求析文档 的定义,query
+麻烦把 schema.prisma 的内容修改为 消息队列参数谢谢,modify_file
+评估 log.txt 的可行性,deep_search
+可以帮我创建一个叫 notes.txt 的文件好吗,add_file
+你是谁,vague
+把 main.py 删掉,delete_file
+综合分析 config.yaml 和 readme.md 的差异,deep_search
+帮我写一个 index.html,add_file
+搜项目依赖,query
+把文件归类整理,refactor
+搜索含 消息队列参数 的文件,query
+综合分析 train.py 和 schema.prisma 的差异,deep_search
+创建 settings.py 然后写 部署脚本内容,add_file
+搜索包含 AI 接口文档 的文件,query
+修改一下 report.md,modify_file
+分析一下整体构,deep_search
+写入新文件 index.hml,add_file
+新建一个 packge.json,add_file
+删除 train.py 释放空间,delete_file
+删除多余的 Makefile,delete_file
+新建一个叫 model.py 的文档,add_file
+帮我找一下 model.py,query
+创建 package.json 然后写 性能优化方案,add_file
+搜索包含 版本更新记录 的文件,query
+把 logo.png 删掉,delete_file
+把 style.css 删掉,delete_file
+把 config.yaml 给移除掉,delete_file
+重构一下代码结构,refactor
+把 requirements.txt 的内容修改为 版本更新记录,modify_file
+把 config.yaml 更新为 部署脚本内容,modify_file
+帮我创建 report.md 然后写入内容,add_file
+嗯嗯,vague
+把 requirements.txt 重新编辑一下,modify_file
+新建 index.html 保存 部署脚本内容,add_file
+深入研究 package.json 的发展方向,deep_search
+帮忙清理日志 logo.png一下,delete_file
+把 requiremens.txt 给移除掉,delete_file
+帮我把 index.html 删了,delete_file
+移除 schema.prisma,delete_file
+可以帮我新建 schema.prisma 保存 错误处理逻辑,add_file
+你能做什么,vague
+重构文件组织方式,refactor
+深入分析性能瓶颈,deep_search
+帮我把 index.html 改了,modify_file
+分析系统瓶颈在哪,deep_search
+深入研究 server.rs 的发展方向,deep_search
+新建一个 config.yaml,add_file
+移除掉 model.py,delete_file
+可以帮我重命名 main 为 app,refactor
+把 index.html 给移除掉,delete_file
+我想啊这一下,vague
+创建 app.json 然后写 消息队列参数,add_file
+把那个 schema.prisma 删掉？,delete_file
+深入研究 report.md 的发展方向,deep_search
+创建一个叫 backup.zip 的文件,add_file
+清理一下 train.py,delete_file
+优项目结构,refactor
+创建一个叫 data.csv 的文件,add_file
+评估 package.json 的可行性,deep_search
+删掉没用的 backup.zip？,delete_file
+Dockerfile 里面有什么,query
+搜索包含 用户登录日志 的件,query
+帮我把代码重构一下？,refactor
+深入研究 Makefile 的发展方向,deep_search
+把 logo.png 重新编辑一下,modify_file
+啊这？,vague
+重构一下代码结构,refactor
+更新 notestxt 的代码,modify_file
+搜索包含 错误处理逻辑 的文件,query
+查一下这个目录,query
+帮我啊可以吗,vague
+去掉 package.json,delete_file
+对比 index.html 和 train.py 的性能,deep_search
+查一下 readme.md 里写了啥,query
+新建 data.csv 保存 权限管理规则,add_file
+更新 readme.md 修复bug,modify_file
+查一下这个目录,query
+评估 log.txt 的可行性,deep_search
+把 requirements.txt 更新为 监控告警阈值？,modify_file
+帮我编辑 settings.py 替换内容好吗,modify_file
+啊这,vague
+综合评估技术方案,deep_search
+我想创建 config.yaml 然后写 缓存策略配置吧,add_file
+重构文件组织方式？,refactor
+把文件归类整理,refactor
+新建utils.go 保存 错误处理逻辑,add_file
+把代码按模块分目录,refactor
+帮我把 database.sql 删了,delete_file
+帮我把 test.py 清理了,delete_file
+查一下这个文件？,query
+把工具函数抽到 utils,refactor
+好吧,vague
+整理日志文件,refactor
+可以帮我写入新文件 log.txt,add_file
+搜索文件里的关键词,query
+生成 log.txt,add_file
+深入分析性能瓶颈？,deep_search
+写入文件 Makefile,add_file
+帮我查看 report.md 的内容,query
+对比 reuirements.txt 的不同版本,deep_search
+把 readme.md 删掉,delete_file
+分析系统瓶颈在哪,deep_search
+创建 backup.zip 然后写 缓存策略配置,add_file
+怎么减肥,vague
+新建 style.cs 保存 消息队列参数,add_file
+删掉没用的 train.py,delete_file
+创建 settings.py 然后写 缓存策略配置,add_file
+编辑 main.py 改为 数据库连接池,modify_file
+你能做什么？,vague
+编辑 notes.txt 替换内容？,modify_file
+把测试文件移到 tets 目录,refactor
+把 logo.png 的内容修改为 版本更新记录,modify_file
+帮我创建 schemaprisma 然后写入内容,add_file
+把测试文件移到 tests 目录,refactor
+把 main.py 删掉,delete_file
+帮我更新一下 style.css,modify_file
+把 data.csv 改一改,modify_file
+修改 settings.py 变成 监控告警阈值,modify_file
+把 notes.txt 改一改,modify_file
+更新 main.py 的设置,modify_file
+帮我把 main.py 改了,modify_file
+你会唱歌吗,vague
+帮我移除 logo.png 文件吧,delete_file
+更新 config.yaml 加入 用户登录日志,modify_file
+把 train.py 改一改？,modify_file
+更新 utils.o 修复bug,modify_file
+帮我整理一下目录,refactor
+分析一下整体架构,deep_search
+查下 消息队列参数 的定义,query
+新建一个 log.txt,add_file
+可以帮我创建 requirements.txt 然后写 需求分析文档谢谢,add_file
+请问,vague
+综合评估术方案,deep_search
+去掉 utils.js,delete_file
+帮我把 index.html 删了,delete_file
+帮忙好吧可以吗,vague
+删掉没用的utils.js,delete_file
+你会唱歌吗,vague
+综合分析 readme.md 和 settings.py 的差异？,deep_search
+综合分析系统性能,deep_search
+搜索包含 监控告警阈值 的文件,query
+帮我归档旧文件,refactor
+找一下配置文件在哪,query
+深度分析代码质量,deep_search
+创建 index.html 存储 项目配置信息,add_file
+啊,vague
+删除多余的 logo.png,delete_file
+我想搜索包含 API 接口文档 的文件可以吗,query
+可以帮我新建 Makefile 保存 用户登录日志可以吗,add_file
+我想你是谁吧,vague
+优化项目结构,refactor
+帮我把代码重构一下,refactor
+深入分析性能瓶颈,deep_search
+清理一下 backup.zip,delete_file
+分析系统瓶颈在哪,deep_search
+深度分析代码质量,deep_search
+介绍一下自己？,vague
+把 akefile 更新为 用户登录日志,modify_file
+移除临时文件 notes.txt,delete_file
+帮我整理资源文件,refactor
+生成报告文件 report.md,add_file
+综合分析成本效益,deep_search
+好吧,vague
+把测试文件移到 tests 目录,refactor
+能不能去掉 utils.js吧,delete_file
+移除 Makefile 文件？,delete_file
+可以帮我你能做什么一下,vague
+把 backup.zip 的内容修改为 数据库连接池,modify_file
+重构目录？,refactor
+新建 test.py 保存 权限管理规则,add_file
+嗯嗯？,vague
+帮忙找到红警3的启动程序在哪里谢谢,query
+评估 test.py 的可行性,deep_search
+创建 model.py 然后写 系统运行状态,add_file
+移动文件到对应文件夹？,refactor
+清理下 package.json,delete_file
+世界有多大,vague
+帮我更新一下 backup.zip,modify_file
+移除 database.sql,delete_file
+按类型把文件分好,refactor
+帮我整理一下目录,refactor
+创建一个叫 app.json 的文件,add_file
+把 data.csv 的内容修改为 错误处理逻辑,modify_file
+移除掉 model.py,delete_file
+对比 log.txt 和 config.yaml 的性能,deep_search
+移动文件到对应文件夹？,refactor
+编辑 main.py 加入新内容,modify_file
+请综合分析系统性能可以吗,deep_search
+整理文件夹,refactor
+请重构一下代码结构,refactor
+查看文件列表？,query
+评估 notes.txt 的可行性,deep_search
+帮我更新一下 readme.md,modify_file
+清理一下 backup.zip？,delete_file
+创建 utils.js 然后写 消息队列参数,add_file
+帮忙世界有多大谢谢,vague
+对比分析微服务和单体,deep_search
+删除 utils.go 释放空间,delete_file
+新建一个 Dockerfile,add_file
+麻烦帮我把 report.md 改成 项目配置信息可以吗,modify_file
+深度分析项目的架构,deep_search
+修改 schema.prisma 变成 版本更新记录,modify_file
+麻烦创建 model.py 然后写 测试用例结果可以吗,add_file
+请问,vague
+介绍一下自己,vague
+帮我深入研究 model.py 的发展方向可以吗,deep_search
+把 Dockerfile 改一改,modify_file
+新建 server.rs 保存 错误处理逻辑,add_file
+能不能修改 database.sql 里的 版本更新记录可以吗,modify_file
+深度分项目的架构,deep_search
+重构文件组织方式,refactor
+请搜索项目依赖谢谢,query
+移动文件到对应件夹,refactor
+重构一下代结构,refactor
+帮我重构目录可以吗,refactor
+查一下 版本更新记录 的定义,query
+综合评估技术方案,deep_search
+搜索包含 系统运行状 的文件,query
+可以帮我重构文件组织方式可以吗,refactor
+你是谁,vague
+把 logo.png 重新辑一下,modify_file
+移除 notes.txt,delete_file
+评估 train.py的可行性,deep_search
+搜索项目依赖,query
+删掉没用的 model.py,delete_file
+编辑 Dockrfile 改为 数据库连接池,modify_file
+请问,vague
+删除 data.csv 释放空间？,delete_file
+我想重构整个项目一下,refactor
+把 mai.py 重新编辑一下,modify_file
+请问,vague
+帮我生成一个 readme.md,add_file
+分析数据库性能？,deep_search
+移动文件到对应文夹,refactor
+麻烦编辑 schema.prisma 改为 API 接口文档好吗,modify_file
+帮我看看 logo.png,query
+查项目结构,query
+帮我看看 notes.txt,query
+麻烦你是谁谢谢,vague
+帮我找一下 backup.zip,query
+把 notes.txt 删掉,delete_file
+更新 config.yaml 修复bug？,modify_file
+深入分析性瓶颈,deep_search
+把工具函数抽到 utils,refactor
+帮我把 data.csv 改成 API 接口文档,modify_file
+麻烦创建一个叫 style.css 的文件可以吗,add_file
+清理日志 indexhtml,delete_file
+创建配置文件 database.sql,add_file
+查询文件 report.md 里写了什么？,query
+对比分析微服务和单体,deep_search
+把 index.html 改一改？,modify_file
+深入分析性能瓶颈,deep_search
+深入研究 server.rs 的发展方向,deep_search
+写入文件 test.py,add_file
+重命名 man 为 app,refactor
+把 config.yaml 给移除掉,delete_file
+把 schema.prisma 给移除掉,delete_file
+再见,vague
+评估 readme.md 的可行性？,deep_search
+编辑 schema.prisma 替内容,modify_file
+重命名 main 为 app,refactor
+怎么减肥,vague
+帮忙创建 Dockerfile 然后写 需求分析文档吧,add_file
+把 style.css 重新编辑一下,modify_file
+帮我再见吧,vague
+更新 test.py 加入 错误处理逻辑,modify_file
+帮我归档旧文件,refactor
+等等,vague
+能不能搜索文件里的关键词,query
+可以帮我删除多余的 schema.prisma可以吗,delete_file
+添加 model.py 到项目中,add_file
+查看项目结构,query
+我想新建一个 logo.png好吗,add_file
+删除多余的 database.sql,delete_file
+把文件归类整理,refactor
+整理文件夹,refactor
+帮我查看 report.md 的内容？,query
+查一下 test.py 里写了啥,query
+深度分析代码质量,deep_search
+综合分析系统性能？,deep_search
+帮我归档旧文件,refactor
+删除多余的 backup.zip,delete_file
+创建 settings.py 存储 错误处理逻辑？,add_file
+移文件到对应文件夹,refactor
+清理日志 data.csv,delete_file
+修改 main.py 里的 版本更新记录？,modify_file
+mmm,vague
+分析数据库性能,deep_search
+重命名 main 为 app,refactor
+把 Dockerfile 给移除掉,delete_file
+生成 requirements.txt,add_file
+修改 main.py 里的 代码审查意见,modify_file
+找一下配置文件在哪,query
+新建一个 readme.md,add_file
+新建空白 utils.js,add_file
+找到红警3的启动程序在哪里,query
+查看文件列表？,query
+生成报告文件 schema.prisma,add_file
+帮我查看 Dockerfile 的内容？,query
+创建 log.txt 然后写 需求分析文档,add_file
+介绍一下己,vague
+世界有多大,vague
+新建空白 log.txt,add_file
+深入分析日志数据,deep_search
+删除 index.html 释放空间？,delete_file
+把 requirements.txt 的内容修改为 API 接口文档,modify_file
+深入分析性能瓶颈,deep_search
+修改 logo.png 里的 项目配置信息,modify_file
+重构整个项目,refactor
+帮我更新一下 server.rs？,modify_file
+把 stye.css 重新编辑一下,modify_file
+整理日志文件,refactor
+把那个 model.py 删掉,delete_file
+移动文件到对应文件夹,refactor
+编辑 package.json 替换容,modify_file
+把文件归类整理,refactor
+更新 utils.go 加入 部署脚本内容,modify_file
+搜索包含 监控告警阈值 文件,query
+把代码按模块分目录,refactor
+查看文件列表,query
+mmm,vague
+搜索项目依赖,query
+清理一下 utils.go,delete_file
+把那个 server.rs 删掉,delete_file
+综合分析本效益,deep_search
+mmm,vague
+能不能把那个 package.json 删掉可以吗,delete_file
+帮我把 train.py 删了？,delete_file
+新建文件 schema.prisma 里面写 系统运行状态？,add_file
+可以帮我去掉 Dockerfile一下,delete_file
+写入新文件 log.txt,add_file
+帮忙把测试文件移到 tests 目录吧,refactor
+去掉 server.rs,delete_file
+帮我把 package.json 改了,modify_file
+可以帮我新建一个叫 utils.js 的文档好吗,add_file
+把测试文件移到 tests 目录,refactor
+啊？,vague
+能不能把 database.sql 删掉一下,delete_file
+重构整个项目,refactor
+请把 data.csv 删掉可以吗,delete_file
+把工具函数抽到 utils,refactor
+把 report.md 给移除掉？,delete_file
+介绍一下自己？,vague
+移除临时文件 log.txt,delete_file
+对比 index.html 的不同版本？,deep_search
+移除 log.txt 文件,delete_file
+能不能mmm吧,vague
+把 utils.go 改一改,modify_file
+把 schema.prism 更新为 测试用例结果,modify_file
+麻烦新建一个 main.py吧,add_file
+把 server.rs 删掉,delete_file
+新建 backup.zip 保存 部署脚本内容,add_file
+创建 style.css存储 API 接口文档,add_file
+我想更新 schema.prisma 加入 测试用例结果一下,modify_file
+搜索文件里的关键词,query
+帮我更新一下 train.py,modify_file
+综合评估技术方案,deep_search
+请整理日志文件可以吗,refactor
+把 package.json 删掉？,delete_file
+更新 log.txt 的代码？,modify_file
+嗯嗯,vague
+创建 utils.js 然后写 权限管理规则,add_file
+麻烦创建一个叫 package.json 的文件一下,add_file
+修改 requirements.txt 变成 部署脚本内容,modify_file
+创建 eport.md 然后写 需求分析文档,add_file
+See you,vague
+找一下配置文件在哪？,query
+请帮我查看 utils.go 的内容好吗,query
+帮我把 train.py 清理了,delete_file
+帮我啊可以吗,vague
+嗯嗯,vague
+分析系统瓶颈在哪,deep_search
+帮忙把 style.css 的内容修改为 权限管理规则好吗,modify_file
+帮我修改 utils.js 变成 系统运行状态好吗,modify_file
+评估 test.py 的可行性？,deep_search
+查一下 缓存策略配置 的定义,query
+更新 schema.prisma 加入 错误处理逻辑,modify_file
+把文件归类整理,refactor
+怎么减肥,vague
+帮我等等可以吗,vague
+综合评估技术方案,deep_search
+重构一下代码构,refactor
+删除 logo.png 释放空间,delete_file
+查一下个目录,query
+分析一下整体构,deep_search
+搜索包含 数据库连接池 的文件,query
+修改 style.css 里 测试用例结果,modify_file
+深入研究 requirements.txt 的发展方向,deep_search
+介绍一下己,vague
+深入研究 utils.go 的发展方向,deep_search
+啊？,vague
+能不能啊这好吗,vague
+帮忙把 model.py 改一改谢谢,modify_file
+重构一下代码结构,refactor
+找一下配置文件在哪,query
+修改 Dockerfile 变成 系统运行状态,modify_file
+移动件到对应文件夹,refactor
+整理文件夹,refactor
+新建一个 model.py？,add_file
+帮我分析系统瓶颈在哪一下,deep_search
+整理文件夹,refactor
+深度分析代码质量,deep_search
+See you,vague
+综合分析成本效益,deep_search
+查看目结构,query
+帮我把 dta.csv 改了,modify_file
+把 utils.go 删掉,delete_file
+可以帮我你会唱歌吗吧,vague
+修改 notes.txt 里的 数据库连接池,modify_file
+重命名 main  app,refactor
+生成报告文件 report.md,add_file
+移除临时文件 requirements.txt,delete_file
+综合分析 index.html 和 Dockerfile 的差异,deep_search
+帮我更新一下 Makefile,modify_file
+查看文件列表,query
+请把 test.py 重新编辑一下一下,modify_file
+对比分析微服务和单体,deep_search
+深度分析代码质量,deep_search
+综合分析 log.txt 和 server.rs 的差异,deep_search
+查询文件 notes.txt 里写了什么,query
+分析一下整体架构,deep_search
+查看项目结构,query
+再见,vague
+能不能查一下这个目录可以吗,query
+把工具函数抽到 utils,refactor
+帮我整理资源文件,refactor
+嗯嗯,vague
+深入分析性能瓶颈,deep_search
+帮忙编辑 Makefile 替换内容可以吗,modify_file
+综合评技术方案,deep_search
+对比分析微服务和单体,deep_search
+生成报告文件 index.html,add_file
+可以帮我嗯嗯,vague
+帮我整理源文件,refactor
+帮忙对比 index.html 的不同版本吧,deep_search
+帮查看 report.md 的内容,query
+把 config.yaml 重新编辑一下？,modify_file
+帮我更新一下 utils.js,modify_file
+生成报告文件notes.txt,add_file
+帮我看看 modl.py,query
+编辑 logo.png 替换内容,modify_file
+请把 utils.js 删掉可以吗,delete_file
+把 model.py 给移除掉,delete_file
+查一下 main.y 里写了啥,query
+创建一个叫 notes.txt 的文件,add_file
+更新 notes.txt 的设置,modify_file
+可以帮我查一下这个目录谢谢,query
+重构目录,refactor
+分析一下整体架构,deep_search
+mmm,vague
+清理一下 settingspy,delete_file
+帮我把 appjson 改了,modify_file
+等等,vague
+删除多余的 style.css,delete_file
+嗯好的,vague
+重构一下代码结构,refactor
+帮忙再见好吗,vague
+创建 package.json 然后写 版本更新记录,add_file
+帮忙深入分析性能瓶颈好吗,deep_search
+帮我写一个 requirements.txt,add_file
+能不能把 logo.png 给移除掉吧,delete_file
+帮我找一下app.json,query
+编辑 logo.png 改为 性能优化方案,modify_file
+Makefile 里面有什么,query
+能不能帮我更新一下 Makefile一下,modify_file
+重构一下代码结构,refactor
+把 server.rs 删掉？,delete_file
+重构整个项目,refactor
+能不能帮我归档旧文件可以吗,refactor
+查看项结构,query
+创建一个 main.py 的文件,add_file
+请帮我更新一下 logo.png谢谢,modify_file
+查看件列表,query
+查看文件列表,query
+可以帮我创建 utils.go 然后写 系统运行状态吧,add_file
+介绍一下自己？,vague
+帮我更新一下 test.py,modify_file
+可以帮我帮我删除 utils.js可以吗,delete_file
+怎么减肥,vague
+深度分析代码质量？,deep_search
+深入分析日志数据,deep_search
+分析系统瓶颈在哪,deep_search
+创建 data.csv 存储 版本更新记录,add_file
+把测试文件移到 tests 目录？,refactor
+综合分析成本效益,deep_search
+等等？,vague
+请See you可以吗,vague
+我想深度分析代码质量吧,deep_search
+帮我查看 package.json 的内容？,query
+帮我把 logo.png 删了,delete_file
+深度分析代码质量,deep_search
+生成报告文件 index.html,add_file
+找一下配置文件在哪,query
+创建 config.yaml 存储 错误处理逻辑,add_file
+mmm,vague
+怎么减肥,vague
+创建 Makefile 然后写 部署脚本内容,add_file
+整理日志文件？,refactor
+搜索包含 权管理规则 的文件,query
+深入研究 Makefile 的发展方向,deep_search
+新建文件 Makefile 里面写 消息队列参数,add_file
+生成 utils.go,add_file
+创建 report.md 然后写 版本更新记录,add_file
+重构目录,refactor
+添加 shema.prisma 到项目中,add_file
+把那个 package.json 删掉？,delete_file
+帮我找到红警3的启动程序在哪里可以吗,query
+麻烦对比分析微服务和单体一下,deep_search
+帮我归档旧文件？,refactor
+深入分析日志数据？,deep_search
+stylecss 文件在哪,query
+把 main.py 改一改？,modify_file
+把 train.py 更新为 需求分析文档,modify_file
+把 report.md 删掉,delete_file
+对比分析微服务和单体,deep_search
+综合分析 settings.py 和 style.css 的差异,deep_search
+对比分析微服务和单体？,deep_search
+帮我把 Dockerfile 改了,modify_file
+深度分析项目的架构,deep_search
+怎么减肥,vague
+把 requirements.txt 更新为 项目配置信息,modify_file
+比较 backup.zip 和 settings.py 的优劣,deep_search
+评估 datacsv 的可行性,deep_search
+修改一下 app.jon,modify_file
+整理文件夹,refactor
+新建 Makefile 保存 消息队列参数？,add_file
+帮忙清理日志 index.html,delete_file
+能不能嗯嗯好吗,vague
+帮我再见可以吗,vague
+评估方案的优缺点,deep_search
+评估方案优缺点,deep_search
+帮我归档旧文件,refactor
+综合评估技术方案,deep_search
+修改 server.rs 变成 用户登录日志,modify_file
+搜索项目依赖？,query
+你是谁,vague
+帮我把 Dockerfile 改了,modify_file
+修改一下 Dockerfile,modify_file
+帮我把 readme.md 清理了,delete_file
+查一下这个目录,query
+对比 style.css 的不同版本,deep_search
+把 model.py 删掉,delete_file
+优化项目结构,refactor
+对比 Makeile 的不同版本,deep_search
+帮我把 requirements.txt 清理了,delete_file
+移除 index.html,delete_file
+查看文件列表,query
+我想生成 style.css好吗,add_file
+帮我把代码重构一下,refactor
+把 model.py 给移除掉,delete_file
+按类型把文件分好,refactor
+帮我找一下 config.yaml,query
+把 noes.txt 删掉,delete_file
+整理日志文件,refactor
+创建一个叫 Makefile 的文件,add_file
+移动文件到对应文件夹,refactor
+优化项目结构,refactor
+添加 utils.js 到项目中,add_file
+评估 main.py 的可行性,deep_search
+综合分析系统性能,deep_search
+清理一下 index.html,delete_file
+世界有多大,vague
+评估 main.py 的可行性？,deep_search
+等等？,vague
+帮我找一下 package.json,query
+查一 代码审查意见 的定义,query
+优化项目结构,refactor
+把测试文件到 tests 目录,refactor
+帮我看看 Dockerfile,query
+怎么减肥,vague
+新建文件 data.csv 里面写 性能优化方案,add_file
+深度分析项目的架构,deep_search
+重构文件组织方式,refactor
+麻烦生成报告文件 app.json谢谢,add_file
+综合评估技术方案,deep_search
+更新 report.md 的设置,modify_file
+你会唱歌吗,vague
+分析数据性能,deep_search
+移动文件到对应文件夹,refactor
+创建 log.txt 存储 性能优化方案,add_file
+我想移除掉 database.sql谢谢,delete_file
+对比分析微服务和单体,deep_search
+编辑 schema.prisma改为 缓存策略配置,modify_file
+帮我把 server.rs 改成 权限管理规则,modify_file
+综合评估技术方案,deep_search
+添加 Dockerfile 到项目中,add_file
+深度分析项目的架构,deep_search
+我想你是谁一下,vague
+把工具函数抽到 utils,refactor
+新建一个 database.sql,add_file
+怎么减肥？,vague
+移除 serer.rs,delete_file
+对比 package.json 和 train.py 的性能,deep_search
+新建一个叫 data.csv 的文档,add_file
+移除 logo.png 文件,delete_file
+更新 settings.py 的设置,modify_file
+世界有多大？,vague
+新建空白 index.html,add_file
+新建一个 main.py,add_file
+帮我生成报告文件 log.txt吧,add_file
+查一下 server.rs 里写了啥？,query
+生成 main.py,add_file
+请更新 test.py 的设置,modify_file
+帮我更新一下 model.y,modify_file
+啊这,vague
+评估 app.json 的可行性,deep_search
+麻烦对比 notes.txt 和 test.py 的性能谢谢,deep_search
+帮我更新一下 logo.png,modify_file
+把 index.html 更新为 版本更新记录,modify_file
+帮忙帮我整理资源文件一下,refactor
+新建一个 utils.js,add_file
+世界有多大？,vague
+搜索项目依赖,query
+把文归类整理,refactor
+对比 logo.png 的不同版本？,deep_search
+请问,vague
+啊,vague
+去掉 package.son,delete_file
+帮我更新一下 log.txt,modify_file
+帮我归档旧文件,refactor
+怎么减肥,vague
+生成 log.txt,add_file
+优化项目结构,refactor
+重构文件织方式,refactor
+清理日志 train.py,delete_file
+把文件归类整理,refactor
+搜索文件里的关键词,query
+麻烦把 test.py 删掉好吗,delete_file
+更新 utils.js 的代码,modify_file
+啊这,vague
+好吧,vague
+麻烦分析系统瓶颈在哪可以吗,deep_search
+综合分析系统性能？,deep_search
+把 appjson 的内容修改为 性能优化方案,modify_file
+重目录,refactor
+把 report.md 改一改,modify_file
+能不能评估 log.txt 的可行性谢谢,deep_search
+把文件归类整理,refactor
+修改一下 notes.txt,modify_file
+帮我把 readme.md 删了,delete_file
+帮我找一下 log.txt,query
+帮我看看 conig.yaml,query
+深度分析代码质量,deep_search
+把代码按模块分目录,refactor
+啊？,vague
+帮我把 ogo.png 清理了,delete_file
+清理一下 server.rs,delete_file
+好吧,vague
+新建空白 schema.prisma,add_file
+重命名 main 为 app,refactor
+重构文件组织方式？,refactor
+怎么肥,vague
+创建 model.py 然后写 码审查意见,add_file
+深度分析项目的架构？,deep_search
+生成 utils.js,add_file
+对比分析微服务和单体,deep_search
+编辑 model.py 加入新内容,modify_file
+帮我删除 utils.go,delete_file
+我想新建一个 data.csv谢谢,add_file
+修改一下 Dockerfile,modify_file
+查一下 缓策略配置 的定义,query
+帮我创建 style.css 然后写内容,add_file
+可以帮我查一下这个目录好吗,query
+我想重构目录谢谢,refactor
+分析系统瓶颈在哪,deep_search
+清理一下 ain.py,delete_file
+深度分析代码质量,deep_search
+比较 database.sql 和 utils.js 的优劣,deep_search
+我想移除掉 logo.png,delete_file
+把 confi.yaml 重新编辑一下,modify_file
+帮我创建 utils.go 然后写入内容,add_file
+可以帮我帮我把 style.css 删了,delete_file
+等等,vague
+删除多余的 Makefile,delete_file
+帮我创建 config.yaml 然后写入内容,add_file
+深入研究 package.son 的发展方向,deep_search
+找一下配置文件在哪,query
+新建 server.rs 保存 用户登录日志,add_file
+把 main.py 删掉,delete_file
+帮我更新下 main.py,modify_file
+修改 database.sql 里的 错误处理逻辑,modify_file
+重构一下代码结构,refactor
+帮我创建 readme.md 然后写入内容,add_file
+帮我生成一个 Makefile,add_file
+重构一下代码结构,refactor
+把 data.csv 的内容修改为 测试用例结果,modify_file
+能不能帮我写一个 package.json一下,add_file
+把 utilsjs 重新编辑一下,modify_file
+生成报告文件 Makefile,add_file
+帮我整理一下目录,refactor
+查询文件 app.json 里写了什么？,query
+帮我把 test.py 删了,delete_file
+新建一个 report.md,add_file
+查一下 logo.png 里写了啥,query
+麻烦帮我查看 report.md 的内容,query
+查看文件表,query
+你做什么,vague
+世界有多大,vague
+查一下这个目录,query
+把文件归类整理？,refactor
+怎么减肥,vague
+帮我归档旧文件,refactor
+分析一下整体架构,deep_search
+修改一下 report.md,modify_file
+重构整个项目,refactor
+新建 config.yaml 保存 错误处理逻辑,add_file
+帮我把 main.py 删了？,delete_file
+去掉 config.yaml,delete_file
+帮我把 logo.png 改成 版本更新记录,modify_file
+帮我请问谢谢,vague
+帮我删除 logo.png,delete_file
+帮我综合分析系统性能可以吗,deep_search
+请搜索包含 系统运行状态 的代码谢谢,query
+我想优化项目结构一下,refactor
+深度分析代码质量,deep_search
+Dockerfile 文件在哪,query
+帮我整理一下目录,refactor
+查看文件列表？,query
+移除临时文件 database.sql,delete_file
+帮我把 Makefile 改一改,modify_file
+按类型把文件分好？,refactor
+深度分析代码质量,deep_search
+对比 logo.png 的不同版本,deep_search
+帮我看看 reprt.md,query
+重构目录,refactor
+新建一个 model.py,add_file
+我想综合分析成本效益好吗,deep_search
+把 Maefile 重新编辑一下,modify_file
+帮忙找到红警3的启动程序在哪里谢谢,query
+创建 utils.go 然后写 错误处理逻辑,add_file
+更新 database.sql 修复bug,modify_file
+你会唱歌吗,vague
+搜索包含 权限管理规则 的文件,query
+我想删除 log.txt 释放空间一下,delete_file
+对比 model.py 的不同版本,deep_search
+介绍一下自己,vague
+可以帮我移动文件到对应文件夹,refactor
+把 train.py删掉,delete_file
+帮我创建 style.css 然后写入内容,add_file
+把 style.css 给移除掉？,delete_file
+帮我创建 data.csv 然后写入内容,add_file
+创建 package.json 然后写 监控告警阈值,add_file
+麻烦帮我更新一下 requirements.txt好吗,modify_file
+新建 schem.prisma 保存 监控告警阈值,add_file
+编辑 main.py 改为 项目配置信息,modify_file
+更新 config.yaml 加入 版本更新记录,modify_file
+帮我评估方案的优缺点谢谢,deep_search
+把代码按模块分目录,refactor
+更新 utils.go 的代码,modify_file
+麻烦帮我找一下 test.py,query
+重构文件组织方式,refactor
+深分析日志数据,deep_search
+新建一个 settings.py,add_file
+See you,vague
+深度分析代码质量？,deep_search
+把代码按模块分目录,refactor
+更新 Makefile 的代码,modify_file
+请问,vague
+介绍一下自己,vague
+帮我归档旧文件,refactor
+查看项目构,query
+把 config.yaml 给移除掉,delete_file
+创建 settings.p 存储 系统运行状态,add_file
+比较 main.py 和 requirements.txt 的优劣,deep_search
+帮我整理一下目录,refactor
+深度分析项目的架构,deep_search
+帮忙对比 readme.md 和 package.json 的性能吧,deep_search
+查一下 log.txt 里写了啥？,query
+分析一下整体架构？,deep_search
+移动文件到对应文件夹,refactor
+帮我看看 app.json,query
+查一下这个文件,query
+把 report.md 删掉,delete_file
+写入新文件 Dockerfile,add_file
+See you？,vague
+帮我把 requirements.txt 改成 性能优化方案,modify_file
+删除多余的 package.json？,delete_file
+分析一下整体架构,deep_search
+请新建一个叫 Makefile 的文档一下,add_file
+把测试文件移到 tests 目录？,refactor
+帮我把代码重构一下,refactor
+深度分析项目的架构,deep_search
+修改一下 log.txt,modify_file
+把测试文件移到 tests 目录,refactor
+啊？,vague
+评估 app.json 的可行性,deep_search
+删除多余的 log.txt,delete_file
+修改一下 report.md,modify_file
+移除 index.html 文件,delete_file
+麻烦更新 schema.prisma 的代码可以吗,modify_file
+请啊这可以吗,vague
+创建 styl.css 然后写 错误处理逻辑,add_file
+麻烦搜索包含 监控告警阈值 的代码一下,query
+帮忙去掉 config.yaml一下,delete_file
+帮我找一下 model.py？,query
+编辑 utils.js 替换内容,modify_file
+把 train.py 更为 API 接口文档,modify_file
+帮我生成 log.txt可以吗,add_file
+创建 app.json 存储 部署脚本内容,add_file
+请utils.go 文件在哪可以吗,query
+新建文件 main.py 里面写 监控告警阈值？,add_file
+把测试文件移到 tests 目录,refactor
+帮我删除 main.py,delete_file
+添加 main.py 到项目中,add_file
+等等,vague
+帮我嗯嗯,vague
+重构整个项目,refactor
+可以帮我综合分析成本效益,deep_search
+好吧,vague
+把工具函数抽到 utils,refactor
+深入分析志数据,deep_search
+帮我把 server.rs 删了,delete_file
+帮我删除 style.css,delete_file
+请帮我创建 log.txt 然后写入内容可以吗,add_file
+按类型把文件分好,refactor
+等等,vague
+等等,vague
+帮我整理一下目录,refactor
+世界有多大,vague
+搜索包含 权限管理规则 的文件,query
+更新 requirements.txt 的设置,modify_file
+帮我查看 Makefile 的内容,query
+把 Dockerfile 更新为 需求分析文档,modify_file
+删除多余的 reort.md,delete_file
+能不能帮我更新一下 notes.txt可以吗,modify_file
+新建 server.rs 保存 性能优化方案,add_file
+分析系统瓶颈在哪,deep_search
+帮我生成 test.py谢谢,add_file
+创建一个叫 server.rs 的文件,add_file
+找到红警3的启动程序在哪里,query
+移除临时文件 database.sql,delete_file
+把代码按模块分目录,refactor
+清理一下 Dockrfile,delete_file
+把 report.md 给移除掉,delete_file
+新建一个 Dockerfile,add_file
+把 database.sql 的内容修改为 性能优化方案,modify_file
+分析下整体架构,deep_search
+麻烦utils.js 文件在哪谢谢,query
+帮我查看 settings.py 的内容,query
+新建 requirements.txt 保存 项目配置信息,add_file
+新建空白 requirements.txt,add_file
+See you,vague
+编辑 notes.txt 加入新内容,modify_file
+等等,vague
+编辑 utils.go 改为 需求分析文档,modify_file
+重构一下代码结构,refactor
+评估方案的优缺点,deep_search
+分析数据库性能,deep_search
+帮我把 Makefile 清理了,delete_file
+能不能编辑 test.py 改为 版本更新记录吧,modify_file
+怎么减肥？,vague
+分析系统瓶颈在哪？,deep_search
+帮忙请问可以吗,vague
+对比 schema.prisma 的不同版本,deep_search
+重构目录,refactor
+编辑 index.html 加入新内容,modify_file
+帮我把 utilsgo 改了,modify_file
+清理一下 settings.py,delete_file
+好吧,vague
+整日志文件,refactor
+删除多余的 package.json,delete_file
+重目录,refactor
+世界有多大,vague
+世界有多大,vague
+查一下这个文件,query
+世界多大,vague
+清理日志 model.py,delete_file
+创建配置文件 Makefile,add_file
+重构一下码结构,refactor
+怎减肥,vague
+综合分析成本效益,deep_search
+评估 readm.md 的可行性,deep_search
+可以帮我嗯嗯谢谢,vague
+把代码按模块分目录,refactor
+把 logo.png 改一改,modify_file
+生命的意义是什么,vague
+重构一下代码结构,refactor
+整理日志文件,refactor
+修改 settings.py 变成 消息队列参数,modify_file
+把那个 log.txt 删掉,delete_file
+找到红警3的启动程序在哪里,query
+查一下 package.json 里写了啥,query
+介绍一下自己,vague
+查看项目结构,query
+帮我把 main.py 改成 缓存策略配置,modify_file
+深入研究 package.json 的发展方向,deep_search
+对比分析微服务和单体,deep_search
+帮我把 min.py 改了,modify_file
+整理文件夹,refactor
+查看项目结构,query
+移除掉 readme.d,delete_file
+把那个 backup.zip 删掉？,delete_file
+好吧,vague
+把 package.jso 改一改,modify_file
+帮我查看 report.md 的内容,query
+新建 index.html 保存 错误处理逻辑,add_file
+帮我See you一下,vague
+创建 package.json 然后写 性能优化方案,add_file
+帮我找一下 requirements.txt,query
+帮我把 backup.zip 清理了,delete_file
+查一下这个目录,query
+生命的意义是什么？,vague
+麻烦帮我找一下 package.json吧,query
+把 server.rs 的内容修改为 部署脚本内容,modify_file
+找到红警3的启动程序在哪里,query
+创建 log.txt 存储 测试用例结果,add_file
+把文件归类整理,refactor
+找到红警3的启动程序在哪里,query
+麻烦把测试文件移到 tests 目录一下,refactor
+新建一个叫 pp.json 的文档,add_file
+删除多余的 Makefile,delete_file
+把那个 schema.prisma 删掉,delete_file
+去掉 data.csv？,delete_file
+怎么减肥,vague
+深度分析代码质量,deep_search
+啊,vague
+查询文件 test.py 里写了什么,query
+帮我把 log.txt 改成 版本更新记录,modify_file
+重命名main 为 app,refactor
+查看项目结构,query
+新建一个 model.py,add_file
+分析数据库性能,deep_search
+查一下 config.yaml 里写了啥？,query
+logo.png 里面有什么,query
+重构整个项目,refactor
+清理日志 config.yaml,delete_file
+创建 model.py 然后写 系统运行状态,add_file
+移除 config.yaml,delete_file
+更新 report.md 加入 数据库连接池,modify_file
+新建一个叫 settings.py 的文档,add_file
+优项目结构,refactor
+生命的意义是什么,vague
+帮忙啊,vague
+分析系统瓶颈在哪,deep_search
+重构整个项目,refactor
+创建 app.json 然后写 错误处理逻辑,add_file
+帮我删除settings.py,delete_file
+我想查一下 requirements.txt 里写了啥吧,query
+新建一个 report.md,add_file
+把 package.json 重新编辑一下,modify_file
+帮我更新一下 logo.png,modify_file
+整理文件夹,refactor
+综合评估技术方案,deep_search
+帮我查看 report.md 的内容,query
+可以帮我比较 main.py 和 settings.py 的优劣好吗,deep_search
+把 index.hml 重新编辑一下,modify_file
+麻烦删除多余的 package.json吧,delete_file
+帮我删除多余的 train.py好吗,delete_file
+请嗯嗯吧,vague
+帮我再见可以吗,vague
+深入研究 report.md 的发展方向？,deep_search
+修改一下 test.py,modify_file
+新建一个 syle.css,add_file
+查下这个目录,query
+添加 utils.js 到项目中,add_file
+更新 stylecss 修复bug,modify_file
+评估 index.html 的可行性？,deep_search
+查一下这个文件,query
+创建一个叫 notes.txt 的文件,add_file
+新建一个叫 notes.txt 的文档,add_file
+深入分析性瓶颈,deep_search
+帮我找一下 readme.md,query
+整理文件夹,refactor
+查看文件列表,query
+啊这,vague
+再见,vague
+怎么减肥,vague
+麻烦添加 train.py 到项目中好吗,add_file
+能不能综合分析系统性能吧,deep_search
+创建 config.yaml 然后写 代码审查意见,add_file
+综合评估技术方案,deep_search
+比较 log.txt 和 Dockerfile 的优劣,deep_search
+新建空白 package.json,add_file
+清理日志 requirements.txt,delete_file
+main.py 里面有什么,query
+能不能对比 test.py 的不同版本,deep_search
+请帮我找一下 index.html好吗,query
+请帮我整理一下目录吧,refactor
+深度分析项目的架构,deep_search
+生成 train.py？,add_file
+把测试文件移到 tests 目录,refactor
+更新 style.css 的设置,modify_file
+对比 readme.md 和 server.rs 的性能,deep_search
+把 logo.png 删掉,delete_file
+帮我看看 Makefile,query
+可以帮我搜索包含 测试用例结果 的文件一下,query
+移除临时文件 model.y,delete_file
+综合评估技术方案,deep_search
+重构下代码结构,refactor
+新建 database.sql 保存 权限管理规则,add_file
+综合分析系统性能,deep_search
+搜索包含 需求分析文档 的代码,query
+评估 requirements.txt 的可行性,deep_search
+好吧,vague
+麻烦帮我更新一下 report.md一下,modify_file
+深入分析性能瓶颈,deep_search
+修改一下 readme.md,modify_file
+重文件组织方式,refactor
+写入新文件 settings.py,add_file
+综合分析系统性能,deep_search
+把那个 main.py 删掉,delete_file
+生成 config.yaml,add_file
+我想搜索文件里的关键词,query
+帮我创建 Makefile 然后写入内容,add_file
+深入分析性能瓶颈,deep_search
+帮我整理资源文件,refactor
+清理日志 log.txt,delete_file
+整理件夹,refactor
+深度分析代码质量,deep_search
+查询文件 report.md 里写了什么,query
+帮我创建 logtxt 然后写入内容,add_file
+重命名 mai 为 app,refactor
+重构文件组织方式,refactor
+搜索包含 缓存策略配置 的文件,query
+mmm,vague
+新建 utls.go 保存 系统运行状态,add_file
+查下这个目录,query
+能不能再见可以吗,vague
+比较 backup.zip 和 utils.go 的优劣,deep_search
+更新 main.py 加入 性能优化方案,modify_file
+嗯嗯,vague
+清理一下 style.css,delete_file
+移除 server.rs 文件,delete_file
+帮我更新下 style.css,modify_file
+帮我写一个 notes.txt,add_file
+编辑 readme.md 改为 测试用例结果,modify_file
+更新 model.py 的设置,modify_file
+重命名 main 为 app,refactor
+修改 report.md 变成 版本更新记录？,modify_file
+帮我创建database.sql 然后写入内容,add_file
+请移除 database.sql 文件一下,delete_file
+帮我深入分析性能瓶颈好吗,deep_search
+新建一个叫 config.yaml 的文档,add_file
+重构整项目,refactor
+可以帮我清理一下 report.md吧,delete_file
+对比分析服务和单体,deep_search
+查看项目结构,query
+database.sql 里面有什么,query
+查一下这个目录,query
+比较 model.py 和 style.css 的劣,deep_search
+创建一个叫 style.css 的文件,add_file
+嗯嗯,vague
+移除 utils.go,delete_file
+帮我查看 backup.zip 的内容,query
+深度分析代码质量,deep_search
+世有多大,vague
+综合评估技术方案,deep_search
+麻烦啊谢谢,vague
+嗯嗯,vague
+介绍一下自己？,vague
+Seeyou,vague
+新建文件 main.py 里面写 系统运行状态,add_file
+能不能找一下配置文件在哪可以吗,query
+找到红警3的启动程序在哪里,query
+你是谁,vague
+把 style.css 删掉,delete_file
+查看文列表,query
+对比 backup.zip 的不同版本,deep_search
+怎么减肥,vague
+按型把文件分好,refactor
+移动文件到对应文件夹？,refactor
+更新 config.yaml 的设置,modify_file
+新建一个 package.json,add_file
+帮我创建 server.rs 然后写入内容,add_file
+请深度分析项目的架构可以吗,deep_search
+对比 settings.py 的不同版本,deep_search
+更新 notes.txt 的设置,modify_file
+深入分析日志数据,deep_search
+帮我生成 utils.js可以吗,add_file
+新建 report.md 保存 缓存策略配置,add_file
+请嗯嗯,vague
+编辑 log.txt 改为 部署脚本容,modify_file
+综合分析本效益,deep_search
+你能做什么,vague
+清理一下 test.py,delete_file
+麻烦帮我把代码重构一下好吗,refactor
+世界有多大,vague
+清理日志 readme.md,delete_file
+把 database.sql 删掉,delete_file
+综合分析 readme.md 和 test.py 的差异,deep_search
+能不能啊,vague
+更新 backup.zip 加入 项目配置信息,modify_file
+我想帮我查看 style.css 的内容好吗,query
+能不能帮我更新一下 database.sql好吗,modify_file
+把工具函数抽到 utils,refactor
+查一下这个目录,query
+查一下这个目录？,query
+新建 data.csv 保存 消息队列参数,add_file
+把 trai.py 删掉,delete_file
+查一下 test.py 里写了啥,query
+新建一个 settings.py,add_file
+查看文件列表,query
+帮我删除 index.html,delete_file
+修改 data.csv 变成 性能优化案,modify_file
+把 main.py 改一改,modify_file
+帮我整理一下目录？,refactor
+帮整理资源文件,refactor
+深度分析项目的架构,deep_search
+搜索包含 用户登录日志 的文件,query
+帮我把 package.json 更新为 数据库连接池可以吗,modify_file
+帮我查看 notes.txt 的内容,query
+整理志文件,refactor
+请深入分析性能瓶颈谢谢,deep_search
+把 requirements.txt 的内容修改为 消息队列参数,modify_file
+编辑 test.py 替换内容,modify_file
+综合分析成本效益,deep_search
+创建 Dockerfile 然后写 代码审查意见,add_file
+搜索项依赖,query
+把 test.y 更新为 部署脚本内容,modify_file
+介绍一自己,vague
+嗯好的？,vague
+去掉 serverrs,delete_file
+把 report.md 删掉,delete_file
+移除 settigs.py,delete_file
+生成 index.html？,add_file
+新建一个 readme.md,add_file
+新建 config.yaml 保存 需求分析文档,add_file
+移除临时文件 notes.txt？,delete_file
+嗯好的,vague
+把 main.py 删掉,delete_file
+查一下 Dockerfile 里写了啥,query
+帮写一个 utils.go,add_file
+重构目录,refactor
+新建文件 requirements.txt 里面写 权限管理规则,add_file
+查看文件列表？,query
+Makefile 里面有什么,query
+帮我整理下目录,refactor
+See you,vague
+创建 readme.md 然后写 性能优方案,add_file
+重构目录？,refactor
+深度分析代码质量,deep_search
+可以帮我深入分析日志数据谢谢,deep_search
+搜索包含 数据库连接池 的代码,query
+能不能啊这吧,vague
+添加 logo.png 到项目中,add_file
+优化项目结构,refactor
+麻烦创建 report.md 然后写 错误处理逻辑可以吗,add_file
+帮我整理一下目录,refactor
+找一下配置文件在哪,query
+查一下 idex.html 里写了啥,query
+我想创建一个叫 readme.md 的文件谢谢,add_file
+综合分析 config.yaml 和 package.json 的差异,deep_search
+啊这,vague
+去掉 app.json,delete_file
+嗯嗯,vague
+找一下配置文件在哪？,query
+train.py 里面有什么,query
+找到红警3的启动程序在哪里,query
+把工具函数抽到 utils,refactor
+帮我移除临时文件 server.rs可以吗,delete_file
+把 readm.md 重新编辑一下,modify_file
+再见,vague
+对比 style.css 的不同版本,deep_search
+整理日志文件,refactor
+把代按模块分目录,refactor
+编辑 train.py 替换内容,modify_file
+麻烦帮我把 database.sql 删了好吗,delete_file
+帮忙把 index.html 给移除掉可以吗,delete_file
+把那个 schema.prisma 删掉,delete_file
+好吧,vague
+我想移除 app.json 文件好吗,delete_file
+帮我把代码重构一下,refactor
+请再见吧,vague
+啊这,vague
+重构整个项目？,refactor
+麻烦帮我整理资源文件好吗,refactor
+重构文件组织方式,refactor
+综合分析成本效益,deep_search
+按类型把文件分好？,refactor
+深度分析代码质量,deep_search
+帮我把代码重构一下？,refactor
+把文归类整理,refactor
+See you,vague
+我想嗯好的一下,vague
+新建一个 Dockerfile,add_file
+我想深入分析性能瓶颈可以吗,deep_search
+把 report.md 重新编辑一下,modify_file
+搜索包 系统运行状态 的代码,query
+把 style.css 删掉,delete_file
+能不能写入新文件 package.json吧,add_file
+查一下 权限管理规则 的定义,query
+比较 test.py 和 database.sql 的优劣,deep_search
+添加 reame.md 到项目中,add_file
+把 database.sql 给移除掉,delete_file
+mmm,vague
+嗯嗯,vague
+移除掉 style.css,delete_file
+我想查一下这个目录谢谢,query
+删除多余的 index.html,delete_file
+分析一下整体架构,deep_search
+修改 main.py 里的 部署脚本内容？,modify_file
+帮我啊一下,vague
+新建一个 index.html,add_file
+你会唱歌吗,vague
+新建 test.py 保存 代码审查意见,add_file
+清理日志 server.rs,delete_file
+帮忙帮我把 utils.go 改成 需求分析文档,modify_file
+世界有多大,vague
+生成 log.txt,add_file
+帮我等等一下,vague
+把 configyaml 删掉,delete_file
+找到红警3的启动程序在哪里,query
+创建 config.yaml 然后写 监控告警阈值,add_file
+麻烦请问可以吗,vague
+查一下这个目录,query
+创建 logo.png 存储 消息队列参数,add_file
+啊,vague
+帮我把代码重构一下,refactor
+等等,vague
+啊这？,vague
+评估案的优缺点,deep_search
+重构文件组织方式,refactor
+我想搜索项目依赖,query
+把 package.json 的内容修改为 API 接口文档,modify_file
+新建一个 schemaprisma,add_file
+帮我更新一下 logo.png,modify_file
+style.css 里面有什么,query
+帮我删掉没用的 report.md一下,delete_file
+把 logo.png 的内容修改为 测试用例结果,modify_file
+啊这,vague
+可以帮我搜索项目依赖吧,query
+帮我把 log.txt 清理了,delete_file
+创建 readme.md 然后写 需求分析文档？,add_file
+我想帮我把 database.sql 改了可以吗,modify_file
+请深度分析代码质量谢谢,deep_search
+帮我把 main.py 改了,modify_file
+把 readme.md 删掉？,delete_file
+麻烦帮我把 data.csv 清理了,delete_file
+把 test.py 更新为 监控告警阈值,modify_file
+帮我看看 akefile,query
+更新 reame.md 的设置,modify_file
+请帮我找一下 backup.zip好吗,query
+请查一下 需求分析文档 的定义吧,query
+帮我把 train.py 清理了？,delete_file
+把 train.py 重新编辑一下,modify_file
+深度分析代码质量,deep_search
+帮我更新一下 server.rs,modify_file
+帮我更新一下 utils.js,modify_file
+能不能深度分析代码质量好吗,deep_search
+深度分析代码质量,deep_search
+把 utils.js 给移除掉,delete_file
+啊这,vague
+修改 model.py 里的 API 接口文档,modify_file
+移除掉 log.txt,delete_file
+更新 log.txt 修复bug,modify_file
+帮我删除 train.py,delete_file
+新建一个叫 utils.go 的文档,add_file
+清理一下 server.rs,delete_file
+重构一下代码结构,refactor
+把 index.html 改一改,modify_file
+新建 report.md 保存 部署脚本内容,add_file
+把测试文件移到 tests 目录,refactor
+评估 requirements.txt 的可行性？,deep_search
+整文件夹,refactor
+请帮我整理一下目录吧,refactor
+帮忙帮我写一个 settings.py可以吗,add_file
+删除多余的 settings.py,delete_file
+搜索项目依赖,query
+我想对比分析微服务和单体吧,deep_search
+把文件归类整理,refactor
+对比分析微服务和单体,deep_search
+把 Dockerfile 删掉,delete_file
+搜索包含 系统运行状态 的文件？,query
+新建一个 report.md,add_file
+清理一下 settings.py,delete_file
+找到红警3的启动程在哪里,query
+帮我把 database.sq 改了,modify_file
+再见？,vague
+把那个 train.py 删掉,delete_file
+等等,vague
+创建一个叫 rport.md 的文件,add_file
+介绍一下自己,vague
+更新 train.py 加入 代码审查意见,modify_file
+更新 settings.py 修复bug,modify_file
+能不能综合分析系统性能吧,deep_search
+创建配置文件 requirements.txt,add_file
+添加 app.json 到项目中？,add_file
+把 train.py 删掉,delete_file
+搜索包含 API 接口文档 的代码,query
+查看文件列表,query
+把 index.html 重新编辑一下,modify_file
+删除多余的 index.html,delete_file
+深度分析代码质量,deep_search
+帮忙查一下这个文件可以吗,query
+查一下 data.csv 里写了啥？,query
+把文件归类整理,refactor
+搜索包含 消息队列参数 的代码,query
+清理一下 test.py,delete_file
+怎么减肥,vague
+新建一个 model.py,add_file
+麻烦嗯好的好吗,vague
+整理日文件,refactor
+找到红警3的启动程序在哪里,query
+把 ata.csv 删掉,delete_file
+可以帮我帮我查看 test.py 的内容谢谢,query
+对比 backup.zip 的不同版本,deep_search
+生成报告文件 main.py,add_file
+能不能把 style.css 给移除掉吧,delete_file
+请移除 model.py 文件好吗,delete_file
+编辑 train.py 替换内容,modify_file
+帮我把 Dockerfile 改了,modify_file
+帮忙介绍一下自己,vague
+把代码按模块分目录,refactor
+创建一个叫 train.py 的文件,add_file
+啊？,vague
+删除 report.md 释放空间,delete_file
+搜索含 部署脚本内容 的文件,query
+查一下 权限管理规则 的定义,query
+创建一个叫 log.txt 的文件？,add_file
+帮忙你能做什么谢谢,vague
+新建一个 Makefile,add_file
+你是谁,vague
+帮我把 package.json 清理了,delete_file
+能不能整理文件夹一下,refactor
+创建 report.md 存储 监控告警阈值,add_file
+readme.md 文件在哪,query
+修改 settings.py 里的 部署脚本内容,modify_file
+重构录,refactor
+重构目录,refactor
+生成 settings.py,add_file
+生命的意义是什么,vague
+创建配置文件 settings.py,add_file
+修改 model.py 变成 性能优化方案,modify_file
+帮忙清理一下 index.html吧,delete_file
+整理日志文件,refactor
+查看项目结构,query
+帮我整理一下目录,refactor
+深入分析性能瓶颈,deep_search
+麻烦查一下这个目录谢谢,query
+更新 app.json 的代码？,modify_file
+去掉 test.py,delete_file
+我想深入分析日志数据吧,deep_search
+把工具函数抽到 utils,refactor
+查一下这个目录,query
+重构目录,refactor
+啊这,vague
+评估 package.json 的可行性,deep_search
+更新 utils.go 的代码,modify_file
+帮我创建 Makefile 然后写入内容,add_file
+帮我看看 utils.go,query
+查看项目结构,query
+删除 main.py 释放空间,delete_file
+清理一下 main.py,delete_file
+请再见谢谢,vague
+嗯嗯,vague
+对比分析微服务和单体,deep_search
+把 pakage.json 更新为 项目配置信息,modify_file
+帮我把代码重构一下,refactor
+能不能把工具函数抽到 utils吧,refactor
+删除多余的 report.md,delete_file
+麻烦把 model.py 的内容修改为 测试用例结果,modify_file
+帮忙把 data.csv 更新为 消息队列参数谢谢,modify_file
+好吧,vague
+你能做什么,vague
+嗯好的,vague
+请帮我找一下 backup.zip可以吗,query
+深度分析代码质量,deep_search
+移除掉 model.py,delete_file
+帮我更新一下 package.json,modify_file
+对比 log.txt 和 notes.txt 的性能,deep_search
+麻烦把 package.json 更新为 数据库连接池可以吗,modify_file
+嗯嗯,vague
+重构文件组织方式？,refactor
+帮我把 logo.png 改成 代码审查意见,modify_file
+查一这个文件,query
+编辑 index.html 改为 缓存策略配置,modify_file
+创建 ap.json 存储 代码审查意见,add_file
+帮我整理资源文件,refactor
+分析系统瓶颈在哪,deep_search
+能不能main.py 文件在哪可以吗,query
+嗯好的,vague
+去掉 Dockerfile,delete_file
+删掉没用的 notes.txt,delete_file
+创建一个叫 Dockerfile 的文件,add_file
+把 test.py 的内修改为 缓存策略配置,modify_file
+对比 Dockerfile 和 requirements.txt 的性能,deep_search
+查一下这个目录,query
+清理一下 backup.zip,delete_file
+帮我把 log.txt 删掉一下,delete_file
+把 model.py 删掉,delete_file
+对比 train.py 和 notes.txt 的性能,deep_search
+把 app.json 删掉,delete_file
+帮我归档旧文件,refactor
+嗯好的,vague
+请找到红警3的启动程序在哪里好吗,query
+麻烦mmm好吗,vague
+帮我整理一下目录,refactor
+评方案的优缺点,deep_search
+移动文件到对应文件夹,refactor
+修改 utils.js 变成 系统运行状态,modify_file
+可以帮我深入分析日志数据,deep_search
+编辑 backup.zip 替换内容,modify_file
+帮忙查一下这个目录可以吗,query
+麻烦搜索项目依赖可以吗,query
+编辑 schema.prisma 加入新内容,modify_file
+移除临时文件 requirements.txt,delete_file
+mmm,vague
+帮我把代码重构一下,refactor
+mmm,vague
+整理文件夹？,refactor
+帮我更新一下 package.json,modify_file
+把 Makefile 重新编辑一下,modify_file
+把 readme.md 删掉,delete_file
+帮我把 tils.js 清理了,delete_file
+新建文件 log.txt 里面写 系统运行状态？,add_file
+生成报告文件 index.html,add_file
+创建 schema.prisma 然后写 部署脚本内容,add_file
+帮我查看 requirements.txt 的内容,query
+创建一个叫 requirements.txt 的文件,add_file
+帮我更新一下 server.rs,modify_file
+查看文件列表,query
+把 settings.py 给移除掉？,delete_file
+帮我看看 model.py,query
+更新 app.json 修复bug,modify_file
+综合分析 package.json 和 log.txt 的差异,deep_search
+清理一下 data.csv,delete_file
+清理一下 database.sql,delete_file
+帮查看 Dockerfile 的内容,query
+搜索包含 项目配置信息 的文件,query
+帮忙啊一下,vague
+怎么减肥,vague
+重构目录,refactor
+搜索包含 消息队列参数的文件,query
+帮我写一个 test.py？,add_file
+把 utils.js 改一改,modify_file
+删掉没用的 notes.txt,delete_file
+你能做什么,vague
+把 database.sql 重新编辑一下,modify_file
+更新 log.txt 加入 监控告警阈值？,modify_file
+帮我把 utils.js 改了？,modify_file
+评估 model.py 的可行性,deep_search
+帮我重命名 main 为 app,refactor
+把 test.py 更新为 测试用例结果,modify_file
+移动文件到对应文件夹,refactor
+查一下 用户登录日志 的定义？,query
+帮忙把 main.py 重新编辑一下,modify_file
+把 model.py 的内容修改为 消息队列参数,modify_file
+帮忙mmm好吗,vague
+编辑 settings.py 替换内容,modify_file
+新建空白 package.json？,add_file
+我想找一下配置文件在哪吧,query
+帮我整理资源文件,refactor
+嗯嗯,vague
+帮我查看 log.txt 内容,query
+帮我整理资源文件？,refactor
+Docerfile 里面有什么,query
+帮我删除 stylecss,delete_file
+更新 database.sql 的设置,modify_file
+修改 server.rs 里的 API 接口文档,modify_file
+请问,vague
+搜索项目依赖,query
+可以帮我查一下 数据库连接池 的定义,query
+Makefile 里面有什么,query
+深入研究 server.rs 的发展方向,deep_search
+查一下 index.html 里写了啥,query
+创建 utils.go 然后写 错误处理逻辑,add_file
+帮我找一下 style.css,query
+把 database.sql 删掉,delete_file
+帮我整理资源文件,refactor
+我想重构文件组织方式可以吗,refactor
+帮我把 package.json 改成 码审查意见,modify_file
+把工具函数抽到 utils,refactor
+重构整个项目,refactor
+重构一下代码结构,refactor
+修改 backup.zip 变成 缓存策略配置,modify_file
+再见,vague
+删除多余的 settings.py,delete_file
+请把 index.html 更新为 测试用例结果谢谢,modify_file
+可以帮我把工具函数抽到 utils谢谢,refactor
+修改一下 train.py？,modify_file
+请综合评估技术方案好吗,deep_search
+移除 Makefile,delete_file
+新建 report.md 保存 监控告警阈值,add_file
+分析一下整体架构,deep_search
+查看项目结构,query
+可以帮我啊这好吗,vague
+创建 notes.txt 然后写 监控告警阈值,add_file
+请清理日志 app.json谢谢,delete_file
+readme.md里面有什么,query
+修改 schema.prisma 里的 版本更新记录？,modify_file
+新建一个 settings.py,add_file
+帮我更新一下 train.py？,modify_file
+生成 schema.prisma,add_file
+麻烦啊这谢谢,vague
+帮我删除 database.sql？,delete_file
+深入研究 utils.js 的发展方向,deep_search
+编辑 settings.py 改为 监控告警阈值,modify_file
+综合评估技术方案,deep_search
+对比 test.py 的不同版本,deep_search
+创建 log.txt 然后写 权限管理规则,add_file
+帮我删除 package.json？,delete_file
+帮我删除 config.yml,delete_file
+删掉没用的 app.json,delete_file
+编辑 Makefile 替换内容？,modify_file
+帮忙把 train.py 删掉一下,delete_file
+帮我找一下 readme.md？,query
+新建文件 Dockerfile 里面写 消息队列参数,add_file
+把 app.json 的内容修改为 项目配置信息,modify_file
+新建一个 log.txt,add_file
+麻烦帮我查看 train.py 的内容好吗,query
+我想查一下这个文件一下,query
+比较 notes.txt 和 main.py 的优劣？,deep_search
+帮我删掉没用的 requirements.txt吧,delete_file
+等等,vague
+可以帮我把那个 settings.py 删掉,delete_file
+把工具函数抽到 utils,refactor
+帮我把 readme.md 删了,delete_file
+重构目录？,refactor
+新建一个 model.py,add_file
+分析数据库性能,deep_search
+我想删除多余的 logo.png好吗,delete_file
+新建一个 log.txt,add_file
+深度分析代码质量？,deep_search
+帮我生成一个 mode.py,add_file
+创建一个叫 test.py 的文件,add_file
+main.py 件在哪,query
+生成报告文件 schema.prisma,add_file
+按类型把文件分好,refactor
+你会唱歌吗,vague
+能不能重构目录谢谢,refactor
+把工具函数抽到 utils？,refactor
+综合评估技术方案,deep_search
+综合分析 settings.py 和 readme.md 的差异,deep_search
+麻烦查一下这个目录可以吗,query
+我想好吧,vague
+重命名 main 为 app,refactor
+搜索包含 部署脚本内容 的代码？,query
+评估 index.html 的可行性？,deep_search
+去掉 model.py,delete_file
+去掉 readme.md,delete_file
+新建 Makefile 保存 权限管理规则,add_file
+把 backup.zip 更新为 性能优化方案,modify_file
+帮我修改 package.json 变成 监控告警阈值可以吗,modify_file
+综合分析系统性能？,deep_search
+查一下这个文件,query
+啊这,vague
+麻烦把 data.csv 的内容修改为 缓存策略配置一下,modify_file
+查看项目结构,query
+重构文件组织方式,refactor
+把 package.json 重新编辑一下,modify_file
+生成报告文件 data.csv,add_file
+我想帮我把 logo.png 改了好吗,modify_file
+帮我创建 test.py 然后写入内容,add_file
+删除多余的 database.sql,delete_file
+新建 server.rs 保存 需求分析文档,add_file
+删除 data.csv 释放空间,delete_file
+清理日志 config.yaml,delete_file
+新建一个叫 model.py 的文档,add_file
+去掉 main.py,delete_file
+对比 main.py 和 data.csv 的性能,deep_search
+编 report.md 加入新内容,modify_file
+我想帮我查看 model.py 的内容一下,query
+See ou,vague
+帮我整理一下目录,refactor
+重构整个项目,refactor
+帮我把 schema.prisma 清理了,delete_file
+帮我把 logo.ng 改成 错误处理逻辑,modify_file
+把 Makefile 重新编辑一下,modify_file
+移动文件到对应文件夹？,refactor
+编辑 database.sql 替换内容,modify_file
+把 app.json 的内容修改为 需求分析文档,modify_file
+帮忙修改 app.json 变成 需求分析文档,modify_file
+评估 logo.png 的可行性,deep_search
+创建 backup.zip 然后写 版本更新记录,add_file
+创建 app.json 然后写 缓存策略配置,add_file
+帮我归档旧文件,refactor
+把 notes.txt 删掉,delete_file
+重构目录,refactor
+你会唱歌吗,vague
+搜索项目依赖,query
+把 app.json 更新为 系统运行状态,modify_file
+搜索包含 项目配置信息 的文件,query
+综合分析成本效益,deep_search
+写入新文件 utils.js,add_file
+创建 readme.md 存储 代码审查意见,add_file
+分析系统瓶颈在哪,deep_search
+综合评估技术方案,deep_search
+把测试文件移到 tests 目录,refactor
+我想介绍一下自己,vague
+找到红警3的启动程序在哪里,query
+生成报告文件 Makfile,add_file
+评估方案的优缺点,deep_search
+帮我生成一个 train.py？,add_file
+可以帮我生成 server.rs,add_file
+重构一下代码构,refactor
+把工具函数抽到 utils,refactor
+帮我把 Dockerfile 改成 缓存策略配置,modify_file
+找到红警3的启程序在哪里,query
+按类把文件分好,refactor
+把工具函数抽到 utils,refactor
+嗯好的？,vague
+麻烦移动文件到对应文件夹一下,refactor
+把 model.py 更新为 部署脚本内容,modify_file
+帮我找一下 utils.js,query
+mmm,vague
+新建 settings.py 保存 用户登录日志,add_file
+帮我更新一下 index.html,modify_file
+嗯嗯,vague
+更新 train.py 的设置,modify_file
+帮我把 data.csv 改成 需求分析文档,modify_file
+写入新文件 requirements.txt,add_file
+帮我添加 report.md 到项目中,add_file
+新建 style.css 保存 监控告警阈值,add_file
+mmm？,vague
+请嗯嗯,vague
+搜索包含 缓存策略置 的代码,query
+麻烦See you可以吗,vague
+创建 settings.py 然后写 系统运行状态,add_file
+查一下 权限管理规则 的定义,query
+把 Makefile 的内容修改为 消息队列参数？,modify_file
+请介绍一下自己好吗,vague
+好吧,vague
+找一下配置文件在哪,query
+重命名 min 为 app,refactor
+对比分析微服务和单体,deep_search
+移除掉 train.py,delete_file
+介绍一下自己,vague
+评估方案的优缺点？,deep_search
+搜索包含 缓存策略配置 的代码,query
+帮我请问,vague
+帮我等等,vague
+帮忙帮我把 Makefile 改成 测试用例结果谢谢,modify_file
+更新style.css 的设置,modify_file
+分析数据库性能,deep_search
+帮我生成一个 style.css,add_file
+创建 readme.md 然后写 代码审查意见,add_file
+能不能嗯好的吧,vague
+生命的意义是什么,vague
+查一下 notes.txt 里写了啥,query
+帮我成一个 Makefile,add_file
+帮我更新一下 indx.html,modify_file
+把 schema.prisma 删掉,delete_file
+移除 requirements.txt？,delete_file
+帮忙生成 notes.txt,add_file
+删掉没用的 config.yaml,delete_file
+能不能分析一下整体架构吧,deep_search
+修改一下 schema.prisma,modify_file
+把 style.css 重新编辑一下,modify_file
+把文归类整理,refactor
+深度分析项目的架构,deep_search
+对比 logo.png 的不同版本,deep_search
+帮我归档旧文件,refactor
+帮我帮我找一下 package.json好吗,query
+分析数据库性能,deep_search
+搜索项目依赖,query
+创建 package.json 然后写 数据库连接池,add_file
+按类型把文件分好,refactor
+帮我看 utils.js,query
+编辑 main.py 替换内容？,modify_file
+把 app.json 重新编辑一下,modify_file
+怎减肥,vague
+找到红警3的启动程序在哪里,query
+介一下自己,vague
+编辑 index.html 替换内容,modify_file
+分析一下整体架构,deep_search
+我想重命名 main 为 app一下,refactor
+帮我整理一下目录,refactor
+把工函数抽到 utils,refactor
+帮我把 utils.go 清理了,delete_file
+搜索包含 消息队列参数 文件,query
+修改 test.py 里的 错误处理逻辑？,modify_file
+综合分析 server.rs 和 style.css 的差异,deep_search
+分析系统瓶颈在哪,deep_search
+把工具函数抽到 utils,refactor
+帮我归档旧文件,refactor
+把工具函数抽到 utils,refactor
+帮我把 test.y 改了,modify_file
+更新 index.html 加入 权限理规则,modify_file
+查看项目结构？,query
+帮我清理一下 model.py一下,delete_file
+把 schema.prisma 重新编辑一下,modify_file
+编辑 style.css 改为 API 接口文档,modify_file
+重命名 main 为 app,refactor
+把代码按模块分目录,refactor
+编辑 readme.md 替换内容,modify_file
+把 config.yaml 的内容修改为 系运行状态,modify_file
+评估方案的优缺点,deep_search
+查看项目结构,query
+深入分析日志数据,deep_search
+评估 log.txt 的可行性,deep_search
+查一下这个文件,query
+更新 server.rs 修复bug,modify_file
+帮我找一下 backup.zip？,query
+创建 main.py 然后写 系统运状态,add_file
+编辑 readme.md 加入新内容,modify_file
+综合分析系统性能？,deep_search
+删除 Dockerfile 释放空间,delete_file
+新建 schema.prisma 保存 测试用例结果,add_file
+把 report.md 的内容修改为 性能优化方案,modify_file
+分析系统瓶颈在哪,deep_search
+麻烦编辑 data.csv 改为 缓存策略配置一下,modify_file
+帮我整理一下目录？,refactor
+创建 utils.js 然后写 代码审查意见,add_file
+搜索文件里的关键词,query
+按类型把文件分好,refactor
+重构一下代码结构,refactor
+帮我帮我把 data.csv 清理了可以吗,delete_file
+请对比 utils.go 和 main.py 的性能吧,deep_search
+比较 settings.py 和 train.py 的优劣,deep_search
+嗯嗯？,vague
+怎么减肥,vague
+重构一下代码结构,refactor
+清理一下 tils.js,delete_file
+你能做什么,vague
+我想嗯嗯吧,vague
+把那个 style.css 删掉,delete_file
+嗯嗯,vague
+请搜索包含 API 接口文档 的文件一下,query
+把 config.yaml 改一改,modify_file
+分析系统瓶颈在哪,deep_search
+帮我更新一下 data.csv,modify_file
+评估 Makefle 的可行性,deep_search
+移除 readme.md 文件？,delete_file
+重构一下代码结构,refactor
+把 Dockerfile 的内容修改为 测试用例结果,modify_file
+新建 Makefile 保存 消息队列参数？,add_file
+帮我更新一下 config.yaml,modify_file
+整理文件夹,refactor
+优化项目结构,refactor
+啊,vague
+重构整个项目,refactor
+分析系统瓶颈在哪,deep_search
+帮我创建 notes.txt 然后写入内容,add_file
+帮忙创建 report.md 存储 数据库连接池可以吗,add_file
+帮忙深入研究 database.sql 的发展方向好吗,deep_search
+帮我requirements.txt 里面有什么好吗,query
+我想啊这,vague
+帮我帮我生成一个 log.txt好吗,add_file
+帮我更新一下 requirements.txt？,modify_file
+清理一下 settings.py,delete_file
+帮我写一个 eport.md,add_file
+分析系统瓶颈在哪,deep_search
+重构一下代码构,refactor
+修改 schema.prisma 变成 数据库连接池？,modify_file
+把 test.py 的内容修改为 测试用例结果？,modify_file
+我想删掉没用的 test.py吧,delete_file
+写入新文件 package.json,add_file
+帮看看 backup.zip,query
+能不能深入研究 utils.go 的发展方向可以吗,deep_search
+查一下这个录,query
+帮我生成一个 package.json,add_file
+帮我查一下 log.txt 里写了啥,query
+请你会唱歌吗,vague
+See yu,vague
+怎减肥,vague
+清理志 package.json,delete_file
+创建 test.py 然后写 消息队列参数,add_file
+移动文件到对应文件夹,refactor
+删掉没用的 requirements.txt,delete_file
+把那个 readme.md 删掉？,delete_file
+重构一下代码结构,refactor
+介绍一下自己,vague
+优化项目结构,refactor
+找一下配置文件在哪,query
+我想分析一下整体架构谢谢,deep_search
+分析据库性能,deep_search
+我想更新 utils.go 修复bug,modify_file
+编辑 utils.go 改为 需求分析文档,modify_file
+嗯好的,vague
+啊这,vague
+综合分析 utils.js 和 schema.prisma 的差异,deep_search
+帮我啊这吧,vague
+麻烦创建 index.html 存储 性能优化方案吧,add_file
+把工具数抽到 utils,refactor
+重构一下代码结构,refactor
+能不能搜索包含 项目配置信息 的文件谢谢,query
+移除掉 server.s,delete_file
+你会唱歌吗,vague
+帮我把 logo.png 改了,modify_file
+查一下 backup.zip 里写了啥,query
+重构目录？,refactor
+创建 config.yaml 然后写 用户登录日志,add_file
+新建 schema.prisma 保存 权限管理规则,add_file
+创建 config.yaml 存储 缓存策略配置,add_file
+我想深入分析日志数据谢谢,deep_search
+新建文件 style.css 里面写 用户登录日志,add_file
+帮忙重构一下代码结构谢谢,refactor
+把 server.rs 改一改？,modify_file
+分析数据库性能,deep_search
+把 database.sql 改一改,modify_file
+把 schema.prsma 删掉,delete_file
+请帮我看看 requirements.txt可以吗,query
+帮我创建 main.py 然后写入内容？,add_file
+你是谁？,vague
+能不能帮我归档旧文件,refactor
+请嗯嗯吧,vague
+可以帮我把测试文件移到 tests 目录可以吗,refactor
+移除临时文件 settigs.py,delete_file
+去掉 Makefile,delete_file
+查看项目结构,query
+重构一下代码结构,refactor
+请综合分析成本效益谢谢,deep_search
+把 ogo.png 重新编辑一下,modify_file
+把 app.json 改一改,modify_file
+更新 test.py 的代码,modify_file
+把 style.css 更新为 测试用例结果,modify_file
+把测试文件移到 tests 目录,refactor
+评估 schema.prisma 的可行性？,deep_search
+请问？,vague
+搜索包含 需求分析文档 的文件,query
+把代码模块分目录,refactor
+把代码按模块分目录,refactor
+我想查一下 监控告警阈值 的定义好吗,query
+修改 readme.md 变成 API 接口文档,modify_file
+新建文件 Makefile 里面 性能优化方案,add_file
+麻烦帮我查看 utils.go 的内容,query
+综合分析系统性能,deep_search
+搜索文件里的关键词,query
+创建main.py 然后写 需求分析文档,add_file
+麻烦综合分析 server.rs 和 logo.png 的差异,deep_search
+优化项目结构,refactor
+嗯嗯,vague
+搜索项目依赖,query
+帮我你会唱歌吗一下,vague
+嗯好的,vague
+清理一下 data.csv？,delete_file
+把 utils.js 给移除掉,delete_file
+可以帮我你能做什么谢谢,vague
+把 schema.prisma 删掉,delete_file
+移除临时文件 Makefile,delete_file
+编辑 logo.png 加入新内容,modify_file
+删掉没用的 app.json,delete_file
+删除多的 test.py,delete_file
+麻烦深入分析性能瓶颈谢谢,deep_search
+帮忙搜索文件里的关键词,query
+你能做什么,vague
+创建配置文件 style.css,add_file
+把 app.json 删掉？,delete_file
+麻烦你是谁可以吗,vague
+重命名 main 为 app,refactor
+把 style.cs 删掉,delete_file
+麻烦对比 report.md 的不同版本吧,deep_search
+重构一下代码结构,refactor
+清理一下 train.py,delete_file
+把 schema.prisma 重新编辑一下？,modify_file
+生成报告文件 style.css,add_file
+生命的意义是什么,vague
+我想优化项目结构谢谢,refactor
+帮我更新一下 main.py,modify_file
+我想更新 style.css 加入 测试用例结果,modify_file
+对比 data.csv 和 schema.prisma 的性能,deep_search
+分析数据库性能,deep_search
+清理日志 settings.py,delete_file
+综合估技术方案,deep_search
+把 appjson 更新为 测试用例结果,modify_file
+帮我把 model.py 删了,delete_file
+清理一下 backup.zip？,delete_file
+查一下这文件,query
+帮我把 logo.ng 改成 部署脚本内容,modify_file
+帮我移动文件到对应文件夹,refactor
+去掉 config.yaml,delete_file
+帮我把 data.csv 改了？,modify_file
+移除临时文件 test.py,delete_file
+综合分系统性能,deep_search
+搜索项目依赖,query
+找到红警3的启动程序在哪里,query
+麻烦你是谁,vague
+把 main.py 删掉,delete_file
+帮忙把 server.rs 更新为 系统运行状态,modify_file
+把测试文件移到 tests 目录,refactor
+我想评估方案的优缺点一下,deep_search
+比较 data.csv 和 schema.prisma 的优劣,deep_search
+对比 readme.md 和 train.py 的性能,deep_search
+深度分析项目的架构,deep_search
+生命的意义是什么,vague
+把 index.html 删掉？,delete_file
+等等,vague
+把工具函数抽到 utis,refactor
+帮我归档旧文件,refactor
+帮忙重构目录一下,refactor
+整理文件夹,refactor
+修改 notes.txt 里的 消队列参数,modify_file
+创建 style.css 然后写 消息队列参数,add_file
+把测试文件移到 tests 目录,refactor
+帮我创建 style.css 然后写入内容,add_file
+你会唱歌吗,vague
+怎么肥,vague
+可以帮我新建一个 schema.prisma,add_file
+对比 notes.txt 的不同版本,deep_search
+搜索文件里的关键词,query
+把工具函数抽到 utils？,refactor
+更新 ndex.html 的代码,modify_file
+新建一个叫 database.ql 的文档,add_file
+帮我归档旧文件,refactor
+删除多余的 logo.png,delete_file
+整理日志文件,refactor
+移除掉 requirements.txt,delete_file
+把 utils.js 的内容修改为 版本更新记录,modify_file
+我想创建配置文件 train.py可以吗,add_file
+清理一下 Makefile,delete_file
+删除多余的 package.json,delete_file
+帮我把代码重构一下,refactor
+啊这,vague
+帮我看看 scema.prisma,query
+整理文件夹,refactor
+找一下配置文件在哪,query
+啊这,vague
+麻烦嗯好的,vague
+你会唱歌吗,vague
+把 model.py 重新编辑一下,modify_file
+帮我写一个 test.py,add_file
+请创建 log.txt 然后写 部署脚本内容吧,add_file
+搜索文件里的关键词,query
+生成 server.rs,add_file
+创建一个叫 appjson 的文件,add_file
+生命意义是什么,vague
+综合评估技术方案？,deep_search
+帮我查看 app.json 的内容,query
+嗯嗯？,vague
+删除多余的 utils.js,delete_file
+更新 database.sql 的代码,modify_file
+修改一下 report.md,modify_file
+能不能把那个 utils.js 删掉吧,delete_file
+创建 readme.md 然后写 需求分析文档,add_file
+创建 schema.prisma 然后写 性能优化方案,add_file
+怎减肥,vague
+重构目录,refactor
+帮我查看项目结构好吗,query
+帮忙找到红警3的启动程序在哪里,query
+你会唱歌吗,vague
+See you,vague
+我想帮我把 config.yaml 改了好吗,modify_file
+帮我找一下 log.txt,query
+综合评估技术方案,deep_search
+嗯嗯,vague
+删除多余的 utils.go,delete_file
+搜索文件里的关键词,query
+麻烦把 settings.py 重新编辑一下一下,modify_file
+我想综合评估技术方案谢谢,deep_search
+深入分析日志数据,deep_search
+对比 test.py 的不同版本,deep_search
+帮我写一个 index.html,add_file
+找到红警3的启动程序在哪里,query
+评估 settings.py 的可行性,deep_search
+分析数据库性能,deep_search
+查一下这个目录,query
+你会歌吗,vague
+帮我你是谁好吗,vague
+能不能新建一个 schema.prisma吧,add_file
+删掉没用的 app.json,delete_file
+帮忙创建 logo.png 存储 监控告警阈值,add_file
+你会唱歌吗,vague
+清理一下 main.py,delete_file
+我想readme.md 文件在哪好吗,query
+写入新文件 log.txt？,add_file
+删除多余的 package.son,delete_file
+帮忙搜索包含 数据库连接池 的文件好吗,query
+移除掉 notes.txt？,delete_file
+更新 package.json 加入 系统运行状态,modify_file
+麻烦更新 main.py 的代码谢谢,modify_file
+把 utils.go 删掉,delete_file
+把文件归类整理,refactor
+深度分析代码量,deep_search
+把 Dockerfile 删掉,delete_file
+对比分微服务和单体,deep_search
+啊这,vague
+麻烦帮我写一个 report.md吧,add_file
+把那个 Dockerfile 删掉,delete_file
+创建一个叫 package.json 的文件,add_file
+新建一个叫 data.csv 的文档,add_file
+请创建一个叫 server.rs 的文件吧,add_file
+生成报告文件backup.zip,add_file
+整理文件夹,refactor
+我想生成 Dockerfile吧,add_file
+移除掉 tran.py,delete_file
+帮我更新一下 server.rs,modify_file
+帮我整理一下目录,refactor
+帮我更新一下 requirments.txt,modify_file
+新建 data.csv 保存 性能优化方案,add_file
+怎减肥,vague
+帮我整理一下目录,refactor
+生成报告文件 ogo.png,add_file
+See you,vague
+找到红警3的启动程序在哪里,query
+把 schema.prisma 的内容修改为 版本更新记录,modify_file
+帮我把 main.py 清理了,delete_file
+编辑 utils.js 替换内容？,modify_file
+综合评估技术方案,deep_search
+See you？,vague
+分析数据库性能,deep_search
+麻烦等等谢谢,vague
+编辑 utils.go 加入新内容,modify_file
+能不能移除 requirements.txt 文件可以吗,delete_file
+麻烦帮我删除 requirements.txt好吗,delete_file
+帮我帮我归档旧文件可以吗,refactor
+新建 Makefile 保存 项目配置信息,add_file
+分析系统瓶颈在哪,deep_search
+我想查询文件 server.rs 里写了什么可以吗,query
+backup.zip 文件在哪,query
+帮我把代码重构一下,refactor
+移除掉 config.yaml,delete_file
+重构目录,refactor
+请问？,vague
+按类型把文件分好,refactor
+帮我把 index.html 清理了,delete_file
+搜索文件里的关键词,query
+查一下这个录,query
+请See you吧,vague
+可以帮我创建 server.rs 存储 错误处理逻辑一下,add_file
+嗯嗯,vague
+移除 main.py？,delete_file
+怎么减肥,vague
+把 index.html 改一改,modify_file
+比较 test.py 和 main.py 的优劣,deep_search
+编辑 notes.txt 改为 需求分析文档,modify_file
+重构一代码结构,refactor
+新建文件 test.py 里面写 本更新记录,add_file
+评估方案的缺点,deep_search
+把文件归类整理？,refactor
+请删除多余的 package.json一下,delete_file
+重构文件织方式,refactor
+帮忙移除 schema.prisma 文件一下,delete_file
+优项目结构,refactor
+你会唱歌吗,vague
+帮我把 model.py 删了,delete_file
+评估 Makefile 的可行性,deep_search
+帮我写一个 readme.md,add_file
+查一下 错误处理逻辑 的义,query
+修改 backup.zip 里的 项目配置信息？,modify_file
+帮我把 utils.go 清理了,delete_file
+啊,vague
+重构目录,refactor
+帮我更新一下 test.py,modify_file
+移除掉 settings.py,delete_file
+把文件归类整理,refactor
+移除掉 requirements.txt,delete_file
+综合分析 train.py 和 notes.txt 的差异,deep_search
+移除临时文件 readme.md,delete_file
+深入分析日志数据,deep_search
+查一下 数据库连接池 的定义？,query
+对比 notes.txt 的不同版本,deep_search
+可以帮我再见吧,vague
+新建一个叫 config.yaml 的文档,add_file
+清理一下 test.py,delete_file
+移除 backup.zip 文件,delete_file
+优化项目结构？,refactor
+把 settings.py 删掉,delete_file
+搜索包含 数据库连接池 的代码,query
+帮我把 requirements.txt 删了,delete_file
+再见,vague
+深入分析日志数据？,deep_search
+请帮我整理一下目录可以吗,refactor
+修改 Makefile 里的 错误处理逻辑,modify_file
+把工具函数抽到 tils,refactor
+搜索包含 性能优化方案 的代码,query
+把 train.py 重新编辑下,modify_file
+再见,vague
+综合分析成本效益,deep_search
+编辑 main.py 改为 项目配置信息,modify_file
+帮忙生命的意义是什么一下,vague
+清理一下 notes.txt,delete_file
+修改一下 tran.py,modify_file
+搜索包含 用户登录日志 的件,query
+分析系统瓶颈在哪,deep_search
+See you,vague
+整理文件夹,refactor
+深度分析项目的架构？,deep_search
+创建logo.png 存储 监控告警阈值,add_file
+再见,vague
+See you,vague
+修改一下 test.py,modify_file
+添加 train.py 到项目中,add_file
+删除 readme.md 释放空间,delete_file
+查一下个目录,query
+请问,vague
+帮我把 requirements.txt 改了,modify_file
+重构目录,refactor
+比较 server.rs 和 requirements.txt 的优劣,deep_search
+帮我查看 app.json 的内容,query
+麻烦帮我删除 Dockerfile可以吗,delete_file
+创建一个叫 Dockerfile 的文件？,add_file
+怎么减肥,vague
+可以帮我生成报告文件 report.md谢谢,add_file
+按类型把文件分好,refactor
+新建一个叫 package.json 的文档,add_file
+帮我生成报告文件 server.rs,add_file
+帮我更新一下 logo.png,modify_file
+比较 test.py 和 Dockerfile 的优劣,deep_search
+整理日志文件,refactor
+深入研 utils.go 的发展方向,deep_search
+requirements.txt 文件在哪,query
+能不能啊这可以吗,vague
+等等,vague
+深入分析日志数据,deep_search
+把 confg.yaml 删掉,delete_file
+清理一下 config.yaml,delete_file
+帮我帮我创建 main.py 然后写入内容吧,add_file
+查一下这个目录,query
+修改一下 settngs.py,modify_file
+我想评估方案的优缺点可以吗,deep_search
+你会唱歌吗？,vague
+好吧,vague
+嗯嗯？,vague
+帮我找一下 notes.txt,query
+帮我把代码重一下,refactor
+麻烦帮我看看 server.rs谢谢,query
+编辑 backup.zip 替换容,modify_file
+report.md 里面有什么,query
+把工具函数抽到 utils,refactor
+修改 Dockerfile 里的 测试用例结果,modify_file
+我想整理日志文件,refactor
+请问,vague
+重构目录？,refactor
+深入分析日志数据,deep_search
+你做什么,vague
+怎么减肥,vague
+帮忙清理一下 train.py谢谢,delete_file
+评估方案的优缺点,deep_search
+把文件归类整理,refactor
+更新 database.sql 加入 错误处理逻辑,modify_file
+综合分析系统性能,deep_search
+查看文列表,query
+你会唱歌吗,vague
+新建空白 test.py,add_file
+移除临时文件config.yaml,delete_file
+综合评估技术方案,deep_search
+优化目结构,refactor
+嗯好的,vague
+深入研究 index.html 的发展方向,deep_search
+notes.txt 里面有什么,query
+帮我再见吧,vague
+查一下 部署脚本内容 的定义,query
+创建 style.css 然后写 权限管理规则,add_file
+世有多大,vague
+深入研究 settings.py 的发展方向,deep_search
+新建 test.py 保存 监控告警阈值,add_file
+帮我重构目录好吗,refactor
+按类型把文件分好,refactor
+你能做什么,vague
+把 Dockerfile 更新为 版本更新记录,modify_file
+能不能找一下配置文件在哪可以吗,query
+把 package.json 给移除掉,delete_file
+新建 data.csv 保存 性能优化方案,add_file
+把 package.json 重新编辑一下,modify_file
+把工函数抽到 utils,refactor
+深分析日志数据,deep_search
+能不能你是谁,vague
+能不能帮我更新一下 notes.txt一下,modify_file
+帮我把 requirements.txt 删了,delete_file
+搜索目依赖,query
+深度分析项目的架构,deep_search
+把 index.html 的内容修改为 API 接口文档,modify_file
+把 settings.py 的内容修改为 系统运行状态,modify_file
+移除 report.md 文件,delete_file
+麻烦帮我写一个 app.json谢谢,add_file
+能不能嗯嗯,vague
+查看项目结构,query
+新建 backup.zip 保存 部署脚本内容,add_file
+找一配置文件在哪,query
+编辑 settings.py 替换内容,modify_file
+更新 backup.zip 加入 性能优化方案,modify_file
+新建空白 model.py,add_file
+查看文件列表？,query
+麻烦介绍一下自己吧,vague
+把 app.json 的内容修改为 项目配置信息,modify_file
+搜索项目依赖,query
+整理文件夹,refactor
+能不能帮我整理一下目录吧,refactor
+帮把 notes.txt 清理了,delete_file
+把那个 model.py 删掉,delete_file
+写入新文件 package.json,add_file
+帮我整理一下目录,refactor
+查一下这个文件,query
+清理一下 report.md,delete_file
+帮忙把 index.html 的内容修改为 API 接口文档吧,modify_file
+搜索包含 用户登录日志 的文件,query
+创建 settings.py 存储 部署脚本内容,add_file
+啊这,vague
+添加 report.md 到项目中,add_file
+修改 Dockerfile 里的 API 接口文档,modify_file
+综合分析 notes.txt 和 train.py 的差异？,deep_search
+分析一下整体架构,deep_search
+创建配置文件 model.py？,add_file
+帮我整理资源文件？,refactor
+新建 Dockerfile 保存 消息队列参数,add_file
+整理日文件,refactor
+帮我看看 Dockerfile,query
+把 log.txt 删掉,delete_file
+深度分析代码质量,deep_search
+重构文件组织方式,refactor
+帮我把 test.py 改了,modify_file
+移除 main.py 文件？,delete_file
+优化项目结构？,refactor
+生成 Makefile,add_file
+帮忙清理日志 utils.go可以吗,delete_file
+找红警3的启动程序在哪里,query
+深度分析代码量,deep_search
+重构目录,refactor
+能不能帮我看看 index.html好吗,query
+帮我看看 config.yaml？,query
+综合分析 notes.txt 和 utils.go 的差异,deep_search
+帮我查询文件 package.json 里写了什么一下,query
+帮我创建 utils.go 然后写入内容,add_file
+清理一下 database.sql,delete_file
+更新 index.html 修复bug,modify_file
+麻烦重构目录好吗,refactor
+综合分析成本效益,deep_search
+帮忙修改一下 app.json可以吗,modify_file
+可以帮我删掉没用的 schema.prisma好吗,delete_file
+深度分析代码质量,deep_search
+我想你能做什么一下,vague
+查一下这个目录,query
+帮我把 app.json 改成 版本更新记录,modify_file
+帮我删掉没用的 train.py,delete_file
+比较 database.sql 和 config.yaml 的优劣,deep_search
+优化项目结构,refactor
+能不能对比 utils.go 和 requirements.txt 的性能,deep_search
+综合分析成本效益？,deep_search
+把 main.py 更新为 版本更新记录,modify_file
+麻烦搜索包含 需求分析文档 的文件谢谢,query
+database.sql 文件在哪？,query
+啊,vague
+你能做什么,vague
+麻烦重构目录可以吗,refactor
+编辑 report.md 改为 消息队列参数,modify_file
+能不能综合分析成本效益,deep_search
+移动文件到对应件夹,refactor
+帮我按类型把文件分好谢谢,refactor
+修改 main.p 变成 需求分析文档,modify_file
+重构目录,refactor
+写入新文件 train.py,add_file
+把 server.rs 重新编辑一下,modify_file
+帮忙搜索项目依赖一下,query
+重命名 main 为 app,refactor
+可以帮我嗯嗯可以吗,vague
+深度分析项目的架构,deep_search
+把 requirements.txt 更新为 消息队列参数？,modify_file
+重构整个项目,refactor
+帮我更新一下 train.py,modify_file
+我想请问好吗,vague
+把 index.html 更新为 缓存策略配置,modify_file
+把工具函数抽到 utils,refactor
+我想移除 Makefile 文件吧,delete_file
+搜索包含 监控告警阈值 的文件,query
+搜索包含 权限管理规则 的文件,query
+帮忙分析一下整体架构好吗,deep_search
+深分析性能瓶颈,deep_search
+分析系统瓶颈在哪？,deep_search
+分析系统瓶颈在哪,deep_search
+查一下这个文件,query
+帮我写一个 settings.py,add_file
+帮我把 Makefile 改了,modify_file
+新建 settings.py 保存 据库连接池,add_file
+把 test.py 给移除掉,delete_file
+能不能把 log.txt 重新编辑一下好吗,modify_file
+创建 readme.md 然后写 监控告警阈值,add_file
+把 Makefile 重新编一下,modify_file
+帮我创建 utils.js 然后写入内容？,add_file
+帮忙帮我把代码重构一下可以吗,refactor
+移动文件到对文件夹,refactor
+查一下 代码审查意见 的定义？,query
+移除 Dockerfile 文件,delete_file
+搜索包含 限管理规则 的文件,query
+请移动文件到对应文件夹吧,refactor
+帮我把 server.rs 清理了,delete_file
+帮忙修改 logo.png 变成 用户登录日志好吗,modify_file
+评估 server.rs 的可行性？,deep_search
+深入研究 app.json 的发展方向,deep_search
+把 server.rs 删掉,delete_file
+你是谁,vague
+新建 report.md 保存 权限管理规则,add_file
+把工具函数抽到 utils,refactor
+更新 report.md 修复bug,modify_file
+新建 index.html 保存 用户登录志,add_file
+深入研究 server.rs 的发展方向,deep_search
+可以帮我把那个 requirements.txt 删掉一下,delete_file
+移除临时文件 settigs.py,delete_file
+分析数据库性能？,deep_search
+重构目录,refactor
+帮我介绍一下自己,vague
+重构一下代码结构,refactor
+帮我把代码重构一下？,refactor
+创建 utils.go 存储 缓存策略配置？,add_file
+深度分析码质量,deep_search
+找一下配置文件在哪,query
+请问？,vague
+新建一个 backup.zip,add_file
+深入分析性能瓶颈？,deep_search
+介绍一下自己,vague
+新建 data.csv 保存 系统运行状态,add_file
+分析系统瓶颈在哪？,deep_search
+帮我归档旧文件,refactor
+搜索包含 错误处理逻辑 的文件,query
+重构文组织方式,refactor
+删除多余的 schema.prisma,delete_file
+搜索文件里的关键词,query
+怎么减肥,vague
+帮我更新一下 model.py,modify_file
+重构整个项目,refactor
+世有多大,vague
+去掉 app.json,delete_file
+查一下 data.csv 里写了啥,query
+综合分析 config.yaml 和 database.sql 的差异,deep_search
+修改一下 backup.zip？,modify_file
+把 app.json 的内容修改为 API 接口文档,modify_file
+优化项目结构,refactor
+帮我查看 style.css 的内容,query
+新建 database.sql 保存 权限管理规则,add_file
+怎么减肥,vague
+搜包含 需求分析文档 的文件,query
+请帮我更新一下 model.py谢谢,modify_file
+综合分析系统性能？,deep_search
+查项目结构,query
+请mmm可以吗,vague
+重命名 main 为 app,refactor
+帮我搜索包含 测试用例结果 的代码可以吗,query
+新建一个 Dockerfile,add_file
+你是谁,vague
+重构目录,refactor
+好吧,vague
+查看文件列表,query
+我想你能做什么谢谢,vague
+请问,vague
+新建空白 backup.zip？,add_file
+介绍一自己,vague
+创建一个叫 datacsv 的文件,add_file
+综合分析成本效益？,deep_search
+能不能创建 package.json 然后写 版本更新记录好吗,add_file
+啊这？,vague
+新建一个 testpy,add_file
+lgo.png 里面有什么,query
+创建 package.json 然后写 数据库连接池,add_file
+创建 index.html 存储 系统运行状态？,add_file
+删除多余的 data.csv,delete_file
+你能做什么？,vague
+整理日文件,refactor
+帮我查看 schema.prisma 的内容,query
+新建 report.md 保存 代码审查意见,add_file
+优化项目构,refactor
+See you,vague
+啊,vague
+综合评估技术方案,deep_search
+请优化项目结构吧,refactor
+深度分析码质量,deep_search
+把 Dockerfile 的内容修改为 错误处理逻辑,modify_file
+帮我创建 notes.txt 然后写入内容,add_file
+帮我再见好吗,vague
+我想重构整个项目好吗,refactor
+帮我生成一个 database.sql,add_file
+搜索包含 性能优化方案 的文件,query
+更新 data.csv 的设置,modify_file
+找一下配置文件在哪,query
+把 backup.zip删掉,delete_file
+移除 Makefile,delete_file
+帮我看看 server.rs？,query
+能不能把 Dockerfile 重新编辑一下可以吗,modify_file
+怎么减肥,vague
+清理一下 main.py,delete_file
+把 main.py 重新编辑一下,modify_file
+能不能修改一下 data.csv谢谢,modify_file
+评估方案的优缺点,deep_search
+帮我整理资源文件,refactor
+生命的意义是什么？,vague
+麻烦新建一个叫 utils.go 的文档好吗,add_file
+深入分析性能瓶颈,deep_search
+整理志文件,refactor
+帮我删除 train.py？,delete_file
+把 app.json 删掉,delete_file
+我想创建一个叫 config.yaml 的文件好吗,add_file
+按类型把文件分好,refactor
+麻烦把文件归类整理可以吗,refactor
+深度分析代码质量,deep_search
+对比 utils.js 和 main.py 的性能,deep_search
+查一下 lg.txt 里写了啥,query
+可以帮我重构目录一下,refactor
+重构一下代码结构？,refactor
+创建 utils.go 然后写 项目配置信息,add_file
+重构目录,refactor
+综合评估技术方案？,deep_search
+移除掉 main.py,delete_file
+新建文件 requirements.txt 里面写 代码审查意见？,add_file
+移除 report.md,delete_file
+再见,vague
+综合分析系统性能,deep_search
+深度分析项目的架构,deep_search
+麻烦搜索包含 监控告警阈值 的代码,query
+修改 model.py 里的 数据库连接池,modify_file
+新建一个叫 app.json 的文档,add_file
+帮我找一下 min.py,query
+修改 utils.go 里的 测试用例结果,modify_file
+查一下 Dockerfile 里写啥,query
+请清理日志 main.py吧,delete_file
+能不能帮我更新一下 index.html可以吗,modify_file
+帮我创建 schema.prisma 然后写入内容,add_file
+请修改 package.json 里的 需求分析文档吧,modify_file
+麻烦更新 train.py 修复bug吧,modify_file
+新建空白 server.rs,add_file
+查一下这个文件？,query
+更新 app.json 加入 版本更新记录,modify_file
+查一这个文件,query
+新建 notes.txt 保存 测试用例结果,add_file
+index.html 里面有什么,query
+我想查一下这个目录,query
+怎么减肥,vague
+帮我看看 utils.go,query
+更新 report.md 加入 性能优化方案？,modify_file
+See you,vague
+请新建文件 style.css 里面写 缓存策略配置,add_file
+修改 model.py 变成 性能优化方案,modify_file
+把 settings.py 删掉,delete_file
+重构目录,refactor
+重构整个项目,refactor
+package.json 里面什么,query
+新建空白 Makefile,add_file
+综合评估技术方案,deep_search
+创建个叫 model.py 的文件,add_file
+添加 log.txt 到项目中,add_file
+等等,vague
+把 train.py 更新为 代码审查意见,modify_file
+修改一下 bacup.zip,modify_file
+帮我写一个 data.csv,add_file
+再见,vague
+帮我把代码重构一下,refactor
+可以帮我把测试文件移到 tests 目录可以吗,refactor
+帮我把 utils.go 改成 需求分析文档？,modify_file
+请创建 config.yaml 然后写 性能优化方案谢谢,add_file
+帮我生成一个 style.css,add_file
+帮我创建 style.css 然后写入内容,add_file
+优化项目结构,refactor
+分析系统瓶颈在哪,deep_search
+帮我把 readme.md 删了？,delete_file
+麻烦等等好吗,vague
+新建 settings.py 保存 项目配置信息,add_file
+对比分析微服务和单体,deep_search
+编辑 settings.py 改为 版本更新记录,modify_file
+帮我创建配置文件 main.py可以吗,add_file
+清理一下 test.py,delete_file
+重构目录,refactor
+把测试文件移到 tests目录,refactor
+重构目录,refactor
+更新 package.jsn 加入 部署脚本内容,modify_file
+深度分析代码质量,deep_search
+把 utils.go 给移除掉,delete_file
+把件归类整理,refactor
+可以帮我清理日志 app.json谢谢,delete_file
+对比 schema.prisma 的不同版本,deep_search
+帮我把 report.md 改了？,modify_file
+帮我好吧谢谢,vague
+查看文件列表？,query
+新建 readme.md 保存 系统运行状态,add_file
+删除多余的 index.html,delete_file
+创建 report.md 存储 项目配置信息,add_file
+能不能搜索项目依赖好吗,query
+对比分析微服务和单体,deep_search
+查询文件 database.sql 里写了什么,query
+重构目录,refactor
+移动文件到对应文件夹,refactor
+深入分析性能瓶颈,deep_search
+编辑 settings.py 替换内容,modify_file
+查看文件列表,query
+查一下这个目录？,query
+帮我 train.py 改成 数据库连接池,modify_file
+你会唱歌吗,vague
+移动文件到对应文件夹,refactor
+搜索包含 版本新记录 的代码,query
+深度分析代码质量,deep_search
+创建一个叫 data.csv 的件,add_file
+把 train.p 给移除掉,delete_file
+帮我创建 test.py 然后写入内容,add_file
+删除多余的 readme.md,delete_file
+重构目录,refactor
+把那个 ap.json 删掉,delete_file
+把 utils.go 的内容修改为 消息队列参数？,modify_file
+帮我看看 data.csv,query
+深度分析代码质量,deep_search
+请帮我查看 Makefile 的内容好吗,query
+帮我把 train.py 改了,modify_file
+把 requirements.txt 更新为 API 接口文档,modify_file
+新建空白 requirements.txt,add_file
+你会唱歌吗,vague
+更新 utils.go 的代码,modify_file
+把 reprt.md 删掉,delete_file
+帮我归档旧文件？,refactor
+深入析性能瓶颈,deep_search
+综合分析 logo.png 和 train.py 的差异,deep_search
+新建一个叫 utils.js 的文档,add_file
+重构一下代码结构,refactor
+重构一下代码结构,refactor
+帮我生成一个 train.py,add_file
+帮我找一下 log.txt,query
+删除多余的 readme.md,delete_file
+请再见一下,vague
+移动文件到对应文件夹,refactor
+生命的意义什么,vague
+你是谁,vague
+新建一个 train.py,add_file
+可以帮我创建 utils.js 存储 消息队列参数谢谢,add_file
+查一下这个目录？,query
+删掉没用的 package.json,delete_file
+怎么减肥,vague
+移动文件到对应文件夹,refactor
+介绍一下自己,vague
+帮我写一个 package.json？,add_file
+找一下配置文件在哪？,query
+创建配置文件 main.py,add_file
+查看项目结构,query
+帮我生成一个 server.rs,add_file
+嗯嗯,vague
+请重构目录谢谢,refactor
+对比分析微服务和单体,deep_search
+评估 model.py 的可行性,deep_search
+深入分析日志数据,deep_search
+编辑 Makefile 替换内容,modify_file
+怎么减肥,vague
+重构文件组织方式,refactor
+分析系统瓶颈在哪,deep_search
+请问？,vague
+深入分析日志数据,deep_search
+我想把工具函数抽到 utils吧,refactor
+帮我写一个 Dockerfile,add_file
+mmm,vague
+写入新文 report.md,add_file
+把 main.py 删掉,delete_file
+对比 schema.prisma 和 notes.txt 的性能,deep_search
+好吧,vague
+新建 model.py 保存 测试用例结果,add_file
+查一下这个文件？,query
+新建文件 model.py 里面写 需求分析文档,add_file
+帮我创建 Dockerfile 然后写入内容,add_file
+综合分析系统性能,deep_search
+重构一下代码结构,refactor
+重命名 main 为 app,refactor
+你能做什么,vague
+再见,vague
+我想嗯好的谢谢,vague
+帮我把代码重构一下,refactor
+帮我更新一下 log.txt？,modify_file
+编辑 log.txt 加入新内容,modify_file
+评估方案优缺点,deep_search
+整理文件夹,refactor
+帮我更新一下 backup.zip,modify_file
+重构一下代码结构,refactor
+修改 requirements.txt 里的 错误处理逻辑,modify_file
+查看项目结构,query
+把工具函数抽到 utils,refactor
+按类型把文件分好,refactor
+新建空白 mainpy,add_file
+帮我更新一下 logo.png,modify_file
+帮我整理资源文件,refactor
+重命名 main 为 app,refactor
+帮我把代码构一下,refactor
+搜索文件里的关键词,query
+综合分析系统性能,deep_search
+帮我归档旧件,refactor
+综合分析系统性能？,deep_search
+分析下整体架构,deep_search
+好吧？,vague
+帮我删除 Makefile,delete_file
+新建一个 index.html,add_file
+帮我把 utils.go 改了,modify_file
+新建 schema.prisma 保存 消息队列参数,add_file
+帮我更新一下 index.html？,modify_file
+把那个 schema.prisma 删掉,delete_file
+好吧,vague
+清理一下 logo.png？,delete_file
+分析系统瓶颈在哪,deep_search
+帮我把 train.py 改成 API 接口文档,modify_file
+更新 bakup.zip 修复bug,modify_file
+能不能生成报告文件 style.css,add_file
+查一下这个文件,query
+修改 data.csv 变成 API 接口档,modify_file
+移除 main.py 文件,delete_file
+能不能生命的意义是什么好吗,vague
+删除 index.html 释放空间,delete_file
+重构整个项目,refactor
+新建一个 schema.prisma,add_file
+你能做什么,vague
+帮忙再见可以吗,vague
+把工具函数抽到 utils,refactor
+新建空白 test.py,add_file
+等等,vague
+新建 app.json 保存 系统运行状态,add_file
+麻烦嗯好的吧,vague
+怎么减肥,vague
+移除掉 utils.js,delete_file
+创建 rain.py 然后写 代码审查意见,add_file
+修改 report.md 变成 监控告警阈值？,modify_file
+找一下配置文件在哪,query
+啊这,vague
+把 index.html 删掉,delete_file
+重一下代码结构,refactor
+评估 test.py 的可行性？,deep_search
+好吧？,vague
+更新 style.css 加入 用户登录日志,modify_file
+去掉 schema.prisma,delete_file
+麻烦优化项目结构好吗,refactor
+帮我生成一个 data.csv,add_file
+按类型把文件分好？,refactor
+帮我把 utils.go 清理了,delete_file
+好吧,vague
+移除 settings.py,delete_file
+创建配置文件 test.py,add_file
+编辑 server.rs 改为 API 接口文档,modify_file
+新建一个叫 package.json 的文档,add_file
+移除 main.py,delete_file
+删除多余的 train.py,delete_file
+编辑 backup.zip 改为 部署脚本内容,modify_file
+能不能重构整个项目好吗,refactor
+把文件归类整理,refactor
+可以帮我查一下 requirements.txt 里写了啥,query
+综合分析成本效益,deep_search
+搜索包含 代码审查意见 的文件,query
+帮我把 backup.zip 了,modify_file
+优化项目结构,refactor
+清理一下 app.json,delete_file
+我想更新 log.txt 的代码可以吗,modify_file
+删除多余的 config.yaml,delete_file
+生成报告文件 index.html,add_file
+啊这,vague
+麻烦帮我把 Makefile 删了一下,delete_file
+我想啊这吧,vague
+创建 report.md 然后写 系统运行状态,add_file
+帮我等等好吗,vague
+查看文件列表,query
+帮我把 settings.py 删了,delete_file
+能不能修改一下 readme.md谢谢,modify_file
+评估 index.html 的可行性？,deep_search
+深入分析性能瓶颈？,deep_search
+移除 train.py文件,delete_file
+帮我生成一个 data.csv,add_file
+请啊这好吗,vague
+嗯嗯,vague
+分一下整体架构,deep_search
+重构目录,refactor
+帮我删除 Dockerfie,delete_file
+搜索文件里的键词,query
+新建一个 report.md,add_file
+啊这,vague
+帮我把代码重构一下？,refactor
+把 package.json 更新为 用户登录日志,modify_file
+帮我看看 model.py,query
+你会唱歌吗？,vague
+深度分析代码质量？,deep_search
+把 Makefile 的内容修改为 用户登录日志,modify_file
+帮我介绍一下自己吧,vague
+新建一个叫 notes.txt 的文档,add_file
+编辑 Dockerfile 加入新内容,modify_file
+把那个 server.rs 删掉,delete_file
+生命的意义是什么,vague
+深入析性能瓶颈,deep_search
+把工具函数抽到utils,refactor
+帮我查看 log.txt 的内容？,query
+深度分析代码质量？,deep_search
+把 Makefile 改一改,modify_file
+综合评估技术方案？,deep_search
+世界有多大,vague
+移除掉logo.png,delete_file
+把 readme.md 改一改,modify_file
+把 data.csv 删掉,delete_file
+新建 database.sql 保存 需求分析文档,add_file
+找到红警3的启动程序在哪里,query
+把 report.md 的内容修改为 性能优化方案,modify_file
+帮我整理日志文件,refactor
+把 data.csv 删掉,delete_file
+请新建一个叫 data.csv 的文档谢谢,add_file
+搜索项目依赖？,query
+麻烦你会唱歌吗可以吗,vague
+嗯嗯？,vague
+重命名 main 为 app,refactor
+重构目录？,refactor
+移除掉 notes.txt,delete_file
+搜索文件里的关键词,query
+嗯嗯,vague
+创建 backup.zip 然后写 版本更新记录,add_file
+分析系统瓶颈在哪,deep_search
+深入研究 backup.zip 的发展方向,deep_search
+把 packag.json 删掉,delete_file
+修改一下 style.css,modify_file
+请整理文件夹好吗,refactor
+啊,vague
+把 logo.png 的内容修改 测试用例结果,modify_file
+你会唱歌吗,vague
+把代码按模块分目录,refactor
+帮我生成一个 Makefile,add_file
+评估 schema.prisma 的可行性,deep_search
+综合分析成本效益,deep_search
+新建 backu.zip 保存 性能优化方案,add_file
+麻烦评估方案的优缺点一下,deep_search
+我想啊可以吗,vague
+帮我创建 requirements.txt 然后写入内容,add_file
+嗯嗯？,vague
+帮我整理源文件,refactor
+请添加 config.yaml 到项目中谢谢,add_file
+你是谁,vague
+新建一个 main.py,add_file
+帮我找一下 main.y,query
+深入研究 Dockerfile 的发展方向,deep_search
+写入新文件 main.py,add_file
+把 database.sql 删掉,delete_file
+优化项目结构,refactor
+重构目录,refactor
+帮我综合分析 app.json 和 log.txt 的差异,deep_search
+帮我新建 server.rs 保存 监控告警阈值好吗,add_file
+移除临时件 report.md,delete_file
+清理一下 notes.txt,delete_file
+新建文件 config.yaml 里面写 消息队列参数,add_file
+把 data.csv 删掉？,delete_file
+移除临时文件 config.yaml,delete_file
+深入分析性能瓶颈,deep_search
+新建 database.sql 保存 测试用例结果,add_file
+我想等等可以吗,vague
+移除 report.md 文件,delete_file
+帮我新建一个 model.py好吗,add_file
+backup.zip 文件在哪？,query
+帮我生成一个 package.json,add_file
+notes.txt 文件在哪,query
+搜索文件里的关键词,query
+删除多余的 schema.prisma,delete_file
+帮我创建 utils.js 然后写入内容,add_file
+整理文件夹,refactor
+帮我整理日志文件一下,refactor
+能不能深入研究 package.json 的发展方向,deep_search
+我想添加 database.sql 到项目中好吗,add_file
+帮我删除 model.py,delete_file
+评估 readme.md 的可行性,deep_search
+创建 train.py 然后写 监控告警阈值,add_file
+移除 schema.prisma 文件,delete_file
+搜索项目依赖,query
+对比 Makefile 的不同版本,deep_search
+能不能帮我更新一下 log.txt可以吗,modify_file
+mmm,vague
+帮我把 data.csv 删了,delete_file
+修改 backup.zip 里的性能优化方案,modify_file
+新建一个 style.css,add_file
+创建 schema.prisma 存储 需求分析文档,add_file
+分析数据库性能,deep_search
+帮忙See you好吗,vague
+查一下这个文件,query
+帮我删除 style.css,delete_file
+查一下这文件,query
+分析系统瓶颈在哪,deep_search
+麻烦生命的意义是什么,vague
+怎么减肥,vague
+请帮我写一个 utils.go好吗,add_file
+查看文列表,query
+介绍一下自己,vague
+删除 Dockerile 释放空间,delete_file
+你能做什么？,vague
+创建 style.css 然后写 需求分析文档,add_file
+可以帮我帮我整理一下目录,refactor
+新建一个叫 main.py 的文档,add_file
+请把 Dockerfile 更新为 权限管理规则好吗,modify_file
+帮我查看 utils.js 的内容,query
+可以帮我啊这谢谢,vague
+帮我生成一个 log.txt,add_file
+对比分析微服务和单体,deep_search
+优化项目结构,refactor
+综合评估技术方案,deep_search
+把 utils.go 更新为 需求分析文档,modify_file
+更新 readme.md 修复bug,modify_file
+生成报告文件 data.csv,add_file
+移除 Makefile,delete_file
+创建 main.py 存储 错误处理逻辑,add_file
+新建 utils.go 保存 权限管理规则？,add_file
+嗯嗯,vague
+logo.png 文件在哪,query
+评估 settigs.py 的可行性,deep_search
+删掉没用的 package.json？,delete_file
+帮我把 model.py 清理了,delete_file
+麻烦更新 package.json 加入 错误处理逻辑好吗,modify_file
+好吧,vague
+分析据库性能,deep_search
+重命名 main 为 app,refactor
+清理日志 app.json,delete_file
+啊这,vague
+按类型把文件分好,refactor
+搜索包含 用户登录日志 的代码,query
+查一下 model.py 里写了啥,query
+帮我查看 index.html 的内容,query
+深入分析性能瓶颈,deep_search
+帮我归档旧文件,refactor
+综合评估技术方案,deep_search
+搜索包含 项目配置信息 的文件,query
+查看项目结构,query
+更新 report.md 的设置,modify_file
+创建 logo.ng 存储 系统运行状态,add_file
+啊这,vague
+删掉没用的 package.json,delete_file
+把 data.csv 删掉,delete_file
+麻烦style.css 文件在哪谢谢,query
+生成 backup.zip,add_file
+重构整项目,refactor
+帮我把 database.sql 改了,modify_file
+把那个 package.json 删掉？,delete_file
+创建 Dockerfile 然后写 版本更新记录,add_file
+综合分析成本效益,deep_search
+创建 Dockerfile 存储 部署脚本内容,add_file
+移除 style.css,delete_file
+把 utils.js 给移除掉,delete_file
+删除 utils.go 释放空间,delete_file
+介绍一下自己,vague
+搜索项目依赖,query
+我想查一下这个目录,query
+帮忙嗯好的,vague
+我想你会唱歌吗谢谢,vague
+查看文件列表,query
+移除 config.yaml 文件,delete_file
+请帮我创建 schema.prisma 然后写入内容一下,add_file
+搜索包含 数据库连接池 的文件？,query
+帮我搜索项目依赖,query
+重构目录,refactor
+查看文件列表,query
+比较 report.md 和 app.json 的优劣,deep_search
+帮我更新一下 notes.txt,modify_file
+帮我把 report.md 改了,modify_file
+添加 utils.go 到项目中,add_file
+移除临时文件 readme.md,delete_file
+帮我写入新文件 settings.py可以吗,add_file
+帮我把代码重构一下？,refactor
+把 train.py 给移除掉？,delete_file
+啊这？,vague
+删掉没用的 log.txt？,delete_file
+创建 database.sql 然后写 缓存策略配置,add_file
+请重构整个项目可以吗,refactor
+model.py 里面有什么,query
+帮我查看 backup.zip 的内容,query
+帮我整理资源文件,refactor
+嗯好的？,vague
+创建 backup.zip 然后写 错误处理逻辑,add_file
+综合分析系统性能,deep_search
+搜索项依赖,query
+你会唱吗,vague
+修改 utls.js 里的 用户登录日志,modify_file
+把 Makefile 更新为 部署脚本内容？,modify_file
+把 utils.go 改一改,modify_file
+找一下配置文件在哪,query
+创建一个叫 readm.md 的文件,add_file
+编辑 Dockerfile 替换内容,modify_file
+编 logo.png 替换内容,modify_file
+啊这,vague
+把 notes.txt 删掉,delete_file
+移除 schema.prisma 文件,delete_file
+搜索包含 测试用例结果 的代码,query
+请重构一下代码结构吧,refactor
+可以帮我分析数据库性能谢谢,deep_search
+搜索项目依赖,query
+移除掉 data.csv,delete_file
+帮我整理一下目录,refactor
+把 test.py 的内容修改为 部署脚本内容？,modify_file
+修改 main.py 里的 部署脚本内容,modify_file
+帮我查看 settings.py 的内容,query
+再见,vague
+帮我把 schema.prisma 清理了,delete_file
+帮我查看 database.sql 的内容,query
+查看项目结构,query
+帮我把 test.py 改了,modify_file
+啊,vague
+对比分析微服务和单体,deep_search
+我想更新 train.py 修复bug可以吗,modify_file
+帮我删 logo.png,delete_file
+你是谁,vague
+清理一下 logo.png,delete_file
+查看目结构,query
+查一下 性能优化方案 的定义？,query
+去掉 config.yaml,delete_file
+修改一下 readme.md,modify_file
+综合评估技术方案,deep_search
+新建一个 style.css,add_file
+帮我帮我看看 readme.md,query
+我想对比 package.json 的不同版本可以吗,deep_search
+帮忙修改 config.yaml 里的 缓存策略配置,modify_file
+帮我把代码重构一下？,refactor
+创建 utils.go 存储 缓存策略配置,add_file
+请清理日志 database.sql好吗,delete_file
+能不能重构文件组织方式一下,refactor
+清理一下 data.csv,delete_file
+分析系统瓶颈在哪,deep_search
+搜索文件里的键词,query
+搜索包含 需求分析文档 的文件,query
+帮我删除 index.tml,delete_file
+删掉没用的 database.sql,delete_file
+评估 main.py 的可行性,deep_search
+更新 database.sql 修复bug,modify_file
+我想新建一个 Makefile谢谢,add_file
+介绍一下自己,vague
+帮我查看 data.csv 的内容,query
+分析一下整体架构,deep_search
+搜索包 用户登录日志 的文件,query
+移除 requirements.txt 文件,delete_file
+帮我重构文件组织方式吧,refactor
+移除掉 app.jon,delete_file
+把 app.json 给移除掉,delete_file
+综分析成本效益,deep_search
+重构整个项目,refactor
+帮我创建 style.css 然后写入内容？,add_file
+清理一下 util.js,delete_file
+重构一下代码结构,refactor
+分析一下整体架构？,deep_search
+创建 requirements.txt 然后写 缓存策略配置,add_file
+整理日志文件,refactor
+移除掉 train.py,delete_file
+查一下 消息队列参数 定义,query
+创建 schema.prisma 然后写 数据库连接池,add_file
+移动文件到对应文件夹,refactor
+能不能嗯嗯好吗,vague
+清理一下 Makefile,delete_file
+找到红警3的动程序在哪里,query
+帮我综合分析系统性能一下,deep_search
+帮我归档旧文件,refactor
+你能做什么,vague
+深入研究 report.md 的发展方向,deep_search
+搜索文件里的关键词？,query
+写入新文件 Dockerfile,add_file
+综合分析 man.py 和 schema.prisma 的差异,deep_search
+把 style.css 删掉,delete_file
+嗯嗯,vague
+新建文件 main.y 里面写 错误处理逻辑,add_file
+data.csv 里面有什么,query
+清理一下 report.md,delete_file
+请重命名 main 为 app可以吗,refactor
+麻烦把 requirements.txt 给移除掉谢谢,delete_file
+重构一下代码结构,refactor
+我想嗯好的可以吗,vague
+生命的意义是什么,vague
+搜索包含 测试用例结果 的文件,query
+把 log.txt 更新为 监控告警阈值,modify_file
+把 utils.js 重新编辑一下,modify_file
+编辑 app.json 改为 监控告警阈值,modify_file
+麻烦优化项目结构一下,refactor
+按类型把文件分好,refactor
+更新 style.css 的代码,modify_file
+帮我把 test.py 清理了,delete_file
+帮我把 Dockerfile 清理了,delete_file
+把测试文件移到 tests 目录,refactor
+深入分析日志数据,deep_search
+你是谁,vague
+啊这,vague
+查看项目结构,query
+帮忙帮我把代码重构一下,refactor
+帮我整理一下目录？,refactor
+删掉没用的 readme.md,delete_file
+再见？,vague
+帮我生成一个 schema.prisma,add_file
+帮我更新一下 data.csv？,modify_file
+移动文件到对应文件夹,refactor
+麻烦data.csv 里面有什么一下,query
+对比 notes.txt 的不同版本？,deep_search
+See you,vague
+去掉 main.py,delete_file
+怎么减肥,vague
+编辑 utilsgo 加入新内容,modify_file
+啊,vague
+把 main.py 的内容修改为 版本更新记录,modify_file
+查看文件列表,query
+帮我写一个 test.py,add_file
+可以帮我生成 database.sql吧,add_file
+重构文件组织方式？,refactor
+创建配置文件 report.md,add_file
+新建空白 style.css,add_file
+评估方案的优缺点,deep_search
+修改 report.md 里的 监控告警阈值,modify_file
+评估方案的优缺点？,deep_search
+创建 model.py 存储 项目配置信息,add_file
+比较 readme.md 和 settings.py 的优劣,deep_search
+去掉 settings.py,delete_file
+查询文件 logo.png 里写了什么,query
+移除临时文件 readme.md,delete_file
+帮我把 settings.py 删了,delete_file
+新建一个 config.yaml,add_file
+移除 config.yaml,delete_file
+清理一下 package.json？,delete_file
+创建 databasesql 存储 API 接口文档,add_file
+搜索包含 错误处理逻辑 的文件,query
+请对比 train.py 的不同版本可以吗,deep_search
+我想清理一下 main.py好吗,delete_file
+把 Makefile 给移除掉,delete_file
+搜项目依赖,query
+新建文件 log.txt 里面写 缓存策略配置,add_file
+删除多余的 settings.py,delete_file
+mmm,vague
+嗯好的,vague
+麻烦再见好吗,vague
+麻烦深入研究 backup.zip 的发展方向吧,deep_search
+麻烦帮我看看 utils.js一下,query
+帮我把代码重构一下,refactor
+怎么减肥,vague
+新建空白 test.py,add_file
+啊这,vague
+把工具函数抽到 utils,refactor
+怎么肥,vague
+帮我更新一下 utils.js,modify_file
+介绍下自己,vague
+重构目录,refactor
+对比 schema.prisma 的不同版本,deep_search
+帮我把代码重构下,refactor
+帮我把工具函数抽到 utils谢谢,refactor
+把那个 train.py 删掉,delete_file
+我想深度分析代码质量一下,deep_search
+搜索文件里的关键词？,query
+帮我删除 server.rs,delete_file
+查一下这个文件,query
+再见,vague
+分析数据性能,deep_search
+帮我看看 database.sql,query
+帮我整理一下目录,refactor
+重构一下代码结构,refactor
+综合分析 logo.png 和 data.csv 的差异,deep_search
+查一下 用户录日志 的定义,query
+查一下这个目录,query
+修改 server.rs 里的 需求分析文档,modify_file
+请帮我更新一下 backup.zip吧,modify_file
+修改 logo.png 里的 监控告警阈值,modify_file
+新建一个叫 model.py 的文档,add_file
+分析系统瓶颈在哪,deep_search
+清理一下 Dockerfile,delete_file
+查看项结构,query
+能不能整理文件夹谢谢,refactor
+对比 settings.py 的不同版本,deep_search
+综合评估技术方案,deep_search
+帮我把 style.css 删了,delete_file
+请查看文件列表一下,query
+等等,vague
+优化项目结构,refactor
+把 model.py 的内容修改为 API 接口文档,modify_file
+帮我把 config.yaml 改了,modify_file
+帮我创建 settings.py 然后写入内容,add_file
+帮我帮我把 requirements.txt 删了,delete_file
+可以帮我新建空白 style.css吧,add_file
+你会唱歌吗,vague
+把 model.py 更新为 版本更新记录,modify_file
+添加 config.yaml 到项目中,add_file
+分析一下整体架构,deep_search
+帮我把 readme.md 删了,delete_file
+帮我把 config.yaml 删了？,delete_file
+你能做什么,vague
+帮忙清理一下 server.rs一下,delete_file
+介绍一下自己,vague
+帮我查看 style.css 的内容,query
+清理一下 Makefile,delete_file
+能不能综合评估技术方案可以吗,deep_search
+重构文件组织方式,refactor
+编辑 app.json 加入新内容,modify_file
+帮忙帮我把 package.json 删了好吗,delete_file
+新建一个叫 test.py 的文档？,add_file
+啊这,vague
+创建 backup.zip 然后写 监控告警阈值,add_file
+可以帮我清理日志 requirements.txt,delete_file
+创建一个叫 report.md 的文件,add_file
+更新 report.md 加入 代码审查意见,modify_file
+生命的意义是什么,vague
+深度分析代码质量,deep_search
+新建一个 train.py,add_file
+帮忙创建 readme.md 然后写 需求分析文档,add_file
+分析数据库性能,deep_search
+把 config.yaml 重新编辑一下,modify_file
+可以帮我删掉没用的 Dockerfile一下,delete_file
+帮我找一下 log.txt,query
+啊,vague
+编辑 readme.md 替换内容,modify_file
+对比 Makefile 和 utils.js 的性能,deep_search
+分析数库性能,deep_search
+嗯嗯,vague
+把 logo.png 更新为 系统运行状态,modify_file
+优化项目结构,refactor
+查询文件 index.html 里写了什么,query
+你是谁,vague
+我想更新 test.py 的设置,modify_file
+分析一下整体架构,deep_search
+搜索包含 项目配置信息 的代码,query
+See you？,vague
+评估 notes.txt 的可行性,deep_search
+嗯嗯？,vague
+我想更新 data.csv 的设置一下,modify_file
+查看项目结构,query
+请问,vague
+深入研究 log.txt 的发展方向,deep_search
+我想你能做什么吧,vague
+移除 requirements.txt 文件,delete_file
+嗯好的,vague
+把 utils.go 的内容修改为 API 接口文档,modify_file
+帮我把 log.txt 改了,modify_file
+帮我把代码重构一下,refactor
+搜索项目依赖,query
+帮我归档旧文件,refactor
+帮我归档旧文件？,refactor
+查看项目构,query
+搜索包含 测试用例结果 的文件？,query
+怎么减肥,vague
+添加 notes.txt 到项目中,add_file
+把代码模块分目录,refactor
+把文件归类整理,refactor
+帮我你是谁谢谢,vague
+啊这,vague
+删除 model.py 释放空间,delete_file
+移除临时文件 Makefile,delete_file
+重构目录,refactor
+帮我把 index.html 改成 性能优化方案,modify_file
+查一下这个文件,query
+查看文件列表,query
+查一下这个目录,query
+帮我把 report.md 清理了,delete_file
+帮我删除 package.json,delete_file
+编辑 package.json 加入新内容,modify_file
+更新 main.py 的设置,modify_file
+帮我新建一个 log.txt,add_file
+把代码按块分目录,refactor
+请问？,vague
+把 Docerfile 删掉,delete_file
+怎么减肥,vague
+mmm,vague
+创建配置文件 config.yaml,add_file
+查看文列表,query
+帮我整理一下目录,refactor
+搜索包含 部署脚本内容 的文件？,query
+搜索项依赖,query
+深入研究schema.prisma 的发展方向,deep_search
+新建一个 train.py,add_file
+查询文件 data.csv 里写了什么,query
+等等,vague
+重构下代码结构,refactor
+我想啊这一下,vague
+移除 Makfile,delete_file
+把 index.html 的内容修改为 需求分析文档,modify_file
+帮我写一个 data.csv,add_file
+新建空白 utils.go,add_file
+嗯嗯,vague
+可以帮我帮我写一个 data.csv可以吗,add_file
+可以帮我请问一下,vague
+帮忙分析一下整体架构一下,deep_search
+把 database.sql 删掉,delete_file
+把 log.txt 的内容修改为 数据库连接池,modify_file
+综合评估技术方案,deep_search
+新建 app.json 保存 部署脚本内容,add_file
+新建空白 data.csv,add_file
+把 ntes.txt 改一改,modify_file
+可以帮我等等吧,vague
+麻烦优化项目结构,refactor
+移除 report.md 文件,delete_file
+帮我创建 config.yaml 然后写入内容,add_file
+请查询文件 database.sql 里写了什么吧,query
+综合分析 utils.go 和 notes.txt 的差异,deep_search
+能不能帮我整理资源文件好吗,refactor
+能不能帮我归档旧文件,refactor
+帮我把 style.css 删掉,delete_file
+我想深入分析日志数据,deep_search
+怎么减肥？,vague
+麻烦清理一下 settings.py,delete_file
+对比分析微服务和单体,deep_search
+麻烦清理一下 report.md一下,delete_file
+创建一个叫 config.yaml 的文件,add_file
+移除 logo.png？,delete_file
+嗯嗯,vague
+更新 config.yaml 加入 消息队列参数？,modify_file
+帮我生成一个 requirements.txt,add_file
+帮我把代码重构一下,refactor
+麻烦修改 index.html 里的 消息队列参数好吗,modify_file
+修改一下 notes.txt,modify_file
+生成 style.css,add_file
+把 notes.txt 的内容修改为 系统运行状态,modify_file
+重命名 main 为 app,refactor
+把那个 readme.md 删掉,delete_file
+修改 backup.zip 变成 代码审查意见,modify_file
+新建 config.yaml 保存 数据库连接池,add_file
+你能做什么,vague
+啊这？,vague
+Se you,vague
+搜索目依赖,query
+把 utils.js 重新编辑一下,modify_file
+对比 styl.css 的不同版本,deep_search
+查看项目结构,query
+帮我把 config.yaml 清理了？,delete_file
+新建一个 requirements.txt,add_file
+移除临时文件 log.txt？,delete_file
+把工具函数抽到 utls,refactor
+查一下这个文件,query
+帮我把工具函数抽到 utils谢谢,refactor
+麻烦帮我创建 report.md 然后写入内容可以吗,add_file
+帮我写一个 main.py,add_file
+搜索文件里的关键词,query
+找到红警3的启动程序在哪里,query
+分析系统瓶颈在哪,deep_search
+创建配置文件 noes.txt,add_file
+深度分析代码质量,deep_search
+综合评估技方案,deep_search
+更新 Dockerfile 加入 性能优化方案？,modify_file
+删除多余的 Makefile？,delete_file
+请生成报告文件 app.json,add_file
+移除 server.rs？,delete_file
+把 requirements.txt 重新编辑一下,modify_file
+更新 data.csv 修复bug,modify_file
+深度分析代码质量,deep_search
+嗯好的？,vague
+能不能优化项目结构可以吗,refactor
+生命的意义是什么？,vague
+帮我更新一下 main.py,modify_file
+帮忙帮我查看 config.yaml 的内容吧,query
+生成 packagejson,add_file
+编辑 train.py 替换内容,modify_file
+查看项目结构,query
+整理日志文件？,refactor
+修改一下 settings.py,modify_file
+settings.py 文件哪,query
+帮我查看 utils.go 的内容,query
+分析一下整体架构？,deep_search
+麻烦创建 log.txt 然后写 错误处理逻辑可以吗,add_file
+把requirements.txt 改一改,modify_file
+移动文件到对应文件夹,refactor
+重构一下代码结构,refactor
+深入分析日志数据,deep_search
+查询文件 notes.txt 里写了什么,query
+新建空白 Dockerile,add_file
+请帮我查看 config.yaml 的内容一下,query
+删除 train.py 释放空间,delete_file
+新建白 test.py,add_file
+整理日志文件,refactor
+我想深入分析性能瓶颈好吗,deep_search
+好吧,vague
+帮我查看 backup.zip 的内容？,query
+查看项目结构,query
+可以帮我啊好吗,vague
+世界有多大,vague
+综合评估技术方案？,deep_search
+帮忙清理一下 data.csv,delete_file
+log.txt 文件在哪,query
+重构目录,refactor
+把 settings.py 删掉？,delete_file
+帮忙查看项目结构好吗,query
+帮忙清理日志 database.sql,delete_file
+整理日志文件,refactor
+把 server.s 重新编辑一下,modify_file
+帮我把 notes.txt 清理了？,delete_file
+重构文件组织方式？,refactor
+评估 data.csv 的可行性,deep_search
+介绍一下己,vague
+你是谁,vague
+可以帮我notes.txt 里面有什么一下,query
+你会唱歌吗,vague
+修改一下 logo.png？,modify_file
+请分析一下整体架构可以吗,deep_search
+评估 utils.s 的可行性,deep_search
+创建 main.py 存储 需求分析文档,add_file
+修改 package.json 里的 权限管理规则,modify_file
+把 test.py 删掉,delete_file
+帮忙mmm好吗,vague
+修改 log.txt 里的 权限管理规则,modify_file
+创建一个叫 databse.sql 的文件,add_file
+查看文件列表,query
+搜索包 项目配置信息 的文件,query
+帮我删除 readme.md,delete_file
+移 readme.md 文件,delete_file
+整理文件夹,refactor
+啊这,vague
+修改 index.html 里的 代码审查意见,modify_file
+搜索项目依赖,query
+好吧,vague
+搜索包含 权限管理规则 的文件,query
+深入研究 mainpy 的发展方向,deep_search
+清理下 log.txt,delete_file
+对比 model.py 和 rain.py 的性能,deep_search
+把 Makefile 更新为 项目配置信息,modify_file
+分析数据库性能,deep_search
+能不能把 Dockerfile 删掉谢谢,delete_file
+能不能更新 train.py 加入 API 接口文档可以吗,modify_file
+深入研究 database.sql 的发展方向,deep_search
+更新 Dockerfile 加入 用户登录日志,modify_file
+删除多余的 server.rs,delete_file
+See you？,vague
+帮我整理资源文件？,refactor
+model.py里面有什么,query
+帮我整理一下目录？,refactor
+把工具函数抽到 utils,refactor
+帮我搜索项目依赖一下,query
+删除多余的 package.json,delete_file
+把 data.csv 改一改,modify_file
+我想嗯嗯好吗,vague
+重构目录,refactor
+编辑 tyle.css 改为 部署脚本内容,modify_file
+啊,vague
+等等,vague
+清理一下 utils.go,delete_file
+介绍一下自己,vague
+更新 readme.md 的设置,modify_file
+移除 test.py？,delete_file
+帮我把 log.txt 清理了,delete_file
+深分析日志数据,deep_search
+创建 main.py 然后写 项目配置信息,add_file
+世有多大,vague
+requirements.txt 里面有什么,query
+你能做什么,vague
+综合分析系统性能,deep_search
+修改一下 report.md？,modify_file
+分析数据库性能？,deep_search
+比较 train.py 和 test.py 的优劣？,deep_search
+按类型把文件分好,refactor
+重构文件组织方式,refactor
+好吧,vague
+把 utils.js 更新为 消息队列参数,modify_file
+能不能综合分析 style.css 和 database.sql 的差异吧,deep_search
+新建 server.rs 保 项目配置信息,add_file
+更新 main.py 修复bug,modify_file
+评估 data.csv 的可行性,deep_search
+创建 style.css 存储 消息队列参数,add_file
+重构目录,refactor
+清理一下 train.py？,delete_file
+怎么减肥？,vague
+深入分析性能瓶颈,deep_search
+综合分析系统性能,deep_search
+删除多余的 model.py,delete_file
+深度分析代码质量,deep_search
+重构文件组织方式,refactor
+新建一个 settings.py,add_file
+搜索包含 监控告警阈值 的文件？,query
+评估 utils.js 可行性,deep_search
+修改 logo.png 里的 API 接口文档,modify_file
+帮忙好吧可以吗,vague
+分析一下整体架构,deep_search
+你是谁,vague
+可以帮我创建 utils.js 存储 用户登录日志谢谢,add_file
+帮忙嗯好的可以吗,vague
+搜索包含 项目配置信息 的文件,query
+帮我删除 notes.txt,delete_file
+找一下配置文件在哪,query
+test.py 文件在哪,query
+修改 readme.md 变成 项目配置信息,modify_file
+清理一下 utils.js,delete_file
+删掉没用的 test.py,delete_file
+分析一整体架构,deep_search
+查一下这个文件,query
+搜索包含 缓存策略配置 的文件,query
+请帮我归档旧文件谢谢,refactor
+查询文件 model.py 里写了什么,query
+综合分析成本效益？,deep_search
+把那个 settings.py 删掉,delete_file
+mmm？,vague
+帮我把代码重构一下,refactor
+notes.txt 里面有什么,query
+找到红警3的启动程序在哪里,query
+评估方案的优缺点,deep_search
+搜索文件里的关键词,query
+把工具函数抽到 utils,refactor
+评估 utils.js 的可行性,deep_search
+深度分析代码质量？,deep_search
+对比 notes.txt 和 readme.md 的性能？,deep_search
+新建 model.py 保存 数据库连接池,add_file
+深入分析日志数据,deep_search
+请新建 config.yaml 保存 缓存策略配置好吗,add_file
+你能做什么,vague
+重构一下代码结构,refactor
+更新 readme.md 加入 需求分析文档,modify_file
+整理日志文件？,refactor
+综合分析成本效益,deep_search
+创建 package.json 然后写 代码审查意见,add_file
+帮我删除 Dockerfle,delete_file
+对比 index.html 和 settings.py 的性能,deep_search
+嗯嗯,vague
+世界有多大,vague
+删除 ap.json 释放空间,delete_file
+把测试文件移到 tests 目录？,refactor
+重构文件组织方式,refactor
+重一下代码结构,refactor
+重构文件组织方式？,refactor
+搜索项目依赖,query
+可以帮我啊这,vague
+清理日志 backup.zip,delete_file
+修改 log.txt 里的 用户登录日志,modify_file
+新建 config.yaml 保存 测试用结果,add_file
+把文件归类整理,refactor
+综合分析 notes.txt 和 config.yaml 的差异？,deep_search
+深度分析项目的架构,deep_search
+我想新建一个叫 package.json 的文档,add_file
+好吧,vague
+怎减肥,vague
+把工具函数抽到 utils,refactor
+你是谁,vague
+查一下这个文件,query
+评估 main.py 的可行性,deep_search
+帮我把代码重构一下,refactor
+可以帮我把 settings.py 重新编辑一下谢谢,modify_file
+修改 config.yaml 里的 测试用例结果,modify_file
+帮我写一个 inde.html,add_file
+深度分析代码质量？,deep_search
+新建 train.py 保存 代码审查意见,add_file
+深度分析代码质量,deep_search
+找一下置文件在哪,query
+帮我看看 report.md？,query
+查一下 代码审查意见 的定义,query
+啊,vague
+能不能把 settings.py 重新编辑一下,modify_file
+搜索包含 API 接口文档 的代码,query
+麻烦更新 app.json 加入 项目配置信息可以吗,modify_file
+移除 report.md,delete_file
+能不能分析一下整体架构一下,deep_search
+帮我把 report.md 改了,modify_file
+查看项目结构,query
+更新 config.yaml 的置,modify_file
+分析一下整体架构,deep_search
+分析数据库性能,deep_search
+帮我查看 model.py 的内容,query
+啊,vague
+重构目录,refactor
+查询文件 package.json 里写了什么,query
+对 Dockerfile 的不同版本,deep_search
+移除 config.yaml,delete_file
+综合分析成本效益,deep_search
+综合分析 main.py 和 model.py 的差异,deep_search
+搜索包含 代码审查意见 的文件,query
+创建 Makefile 然后写 需求分析文档,add_file
+See you,vague
+编辑 train.py 改为 版本更新记录,modify_file
+新建一个 style.css,add_file
+移除 requirements.txt,delete_file
+去掉 settings.py,delete_file
+写入新文件 test.py？,add_file
+查看文件列表,query
+啊这,vague
+帮我更新一下 test.py,modify_file
+查一下 错误处理逻辑 的定义,query
+帮忙查一下 logo.png 里写了啥好吗,query
+分析数库性能,deep_search
+整理文件夹？,refactor
+删除 Makefile 释放空间,delete_file
+修改 data.csv 变成 性能优化方案,modify_file
+深入研究 utils.js 的发展方向,deep_search
+Se you,vague
+搜索项目依赖,query
+查询文件 Dockerfile 里写了什么,query
+我想查一下 部署脚本内容 的定义,query
+新建 style.css 保存 用户登录日志,add_file
+查一下 错误处理逻辑 的定义,query
+mmm,vague
+移动文件到对应文件夹,refactor
+重构一下代码结构,refactor
+搜索包含 消息队列参数 的文件,query
+把 utils.go 内容修改为 部署脚本内容,modify_file
+删除 style.css 释放空间？,delete_file
+查文件列表,query
+新建一个 modl.py,add_file
+清理一下 model.py,delete_file
+嗯嗯,vague
+评估 logo.png 的可行性,deep_search
+查一下这个文件,query
+创建 model.py 存储 API 接口文档？,add_file
+啊这,vague
+移除掉 test.py？,delete_file
+我想package.json 里面有什么谢谢,query
+整理文件夹,refactor
+能不能修改 server.rs 里的 测试用例结果谢谢,modify_file
+深入分析日志数据,deep_search
+生成 config.yaml,add_file
+重构一下代码结构,refactor
+搜索文件里的关键词,query
+编辑 data.csv 替换内容,modify_file
+生命的意义是什么,vague
+新建一个 Makefile,add_file
+修改 database.sql 变成 错误处理逻辑,modify_file
+请综合评估技术方案吧,deep_search
+请比较 readme.md 和 Dockerfile 的优劣,deep_search
+优化项目结构,refactor
+创建 test.py 然后写 测试用例结果,add_file
+清理日志 app.json,delete_file
+分析系统瓶颈哪,deep_search
+请编辑 model.py 加入新内容好吗,modify_file
+把 train.py 的内容修改为 项目配置信息,modify_file
+评估 readme.md 的可行性,deep_search
+把 index.html 删掉,delete_file
+移除 package.json,delete_file
+把 utils.js 删掉,delete_file
+生命的意义是什么,vague
+综合分析 app.json 和 requirements.txt 的差异,deep_search
+帮我生成一个utils.go,add_file
+清理一下 package.json,delete_file
+能不能搜索文件里的关键词谢谢,query
+重命名 main 为 app,refactor
+生成 utils.go,add_file
+怎么减肥,vague
+更新 Makefile 的设置,modify_file
+我想新建文件 schema.prisma 里面写 权限管理规则吧,add_file
+可以帮我请问,vague
+移除掉 ata.csv,delete_file
+可以帮我世界有多大一下,vague
+介绍一下自己,vague
+搜索项目依赖,query
+按类型把件分好,refactor
+把 index.html 删掉,delete_file
+搜索包含 系统运行状态 的文件？,query
+我想嗯嗯好吗,vague
+添加 model.py 到项目中,add_file
+对比 model.py 和 server.rs 的性能,deep_search
+帮我把码重构一下,refactor
+整理日文件,refactor
+帮我创建 model.py 然后写入内容,add_file
+深入分析日志数据,deep_search
+重命名 man 为 app,refactor
+请帮我归档旧文件好吗,refactor
+深入研究 report.d 的发展方向,deep_search
+麻烦综合分析 package.json 和 train.py 的差异谢谢,deep_search
+查一下 server.rs 里写了啥？,query
+找一下配置文件在哪,query
+比较 settings.py 和 Dockerfile 的优劣,deep_search
+你能做什么,vague
+查一下 部署脚本内容 的定义,query
+生成报告文件 requirements.txt,add_file
+怎么减肥,vague

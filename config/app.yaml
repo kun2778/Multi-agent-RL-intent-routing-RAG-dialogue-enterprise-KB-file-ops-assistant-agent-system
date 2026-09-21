@@ -1,0 +1,139 @@
+# Application Configuration for AgentRL System
+# Contains RL training, RAG, and system parameters
+
+app:
+  name: "AgentRL_IntentRouting"
+  version: "2.0.0"
+  debug: false
+  log_level: "INFO"
+
+rl:
+  max_rounds: 5
+  retrieval_budget: 300.0  # seconds
+  training_episodes: 20
+  epsilon_start: 1.0
+  epsilon_decay: 0.995
+  epsilon_min: 0.05
+  gamma: 0.95  # discount factor
+  learning_rate: 0.001
+  replay_buffer_size: 10000
+  batch_size: 32
+  target_update_tau: 0.005
+
+# LLM 意图路由：DeepSeek 为主端点，本地 Ollama 为备端点
+intent_llm:
+  provider: "deepseek"
+  model: "deepseek-chat"
+  timeout: 15
+  # 容灾降级：主端点密钥缺失/失效或调用失败时，自动切换到本地 Ollama
+  fallback:
+    provider: "local"
+    model: "qwen2.5:3b-instruct"
+    base_url: "http://127.0.0.1:11434/v1"
+    timeout: 60
+  reward:
+    correct_routing: 10.0
+    successful_retrieval: 5.0
+    evidence_sufficient: 8.0
+    clarification_resolved: 7.0
+    unnecessary_computation: -3.0
+    wrong_routing: -5.0
+    timeout: -3.0
+    insufficient_evidence: -2.0
+
+rag:
+  chunk_size: 500
+  chunk_overlap: 75       # 15% of chunk_size
+  top_k: 5
+  embedding_dim: 128
+  similarity_threshold: 0.7
+  use_faiss: true
+  faiss_index_path: ".runtime/faiss"
+  max_chunks: 50000
+
+vector_search:
+  provider: "faiss"  # faiss, numpy
+  dimension: 128
+  metric: "inner_product"  # inner_product, cosine
+  normalize: true
+
+# FAISS 向量存储配置
+faiss_store:
+  dimension: 128
+  chunk_size: 500
+  chunk_overlap: 75
+  index_type: "flat"       # flat (IndexFlatIP) 或 ivf (IndexIVFFlat)
+  persist_dir: ".runtime/faiss"
+
+# Embedding configuration
+embedding:
+  model: "local"  # or local model
+  provider: "tfidf"
+  dimension: 128
+  batch_size: 32
+
+# LLM generation configuration
+generation:
+  default_temperature: 0.7
+  default_max_tokens: 2048
+  top_p: 1.0
+  frequency_penalty: 0.0
+  presence_penalty: 0.0
+  stop_sequences: []
+
+# OpenAI integration
+openai:
+  admin_api_key_env: "OPENAI_ADMIN_KEY"
+  organization_id_env: "OPENAI_ORG_ID"
+  default_model: "gpt-4o"
+  dynamic_key_ttl: 3600  # seconds
+  key_rotation_period: 7200  # seconds
+
+# Vault configuration
+vault:
+  enabled: false
+  url_env: "VAULT_ADDR"
+  token_env: "VAULT_TOKEN"
+  namespace_env: "VAULT_NAMESPACE"
+  openai_engine: "openai"
+  role_name: "agent-rl-app"
+  role_ttl: "1h"
+  role_max_ttl: "24h"
+  rotation_period: "720h"
+
+# OCR Configuration
+ocr:
+  enabled: false
+  # 主要OCR提供商
+  provider: "baidu"  # baidu, tencent, alibaba, tesseract
+  # 百度OCR配置
+  baidu:
+    api_key_env: "BAIDU_OCR_API_KEY"
+    secret_key_env: "BAIDU_OCR_SECRET_KEY"
+    access_token_url: "https://aip.baidubce.com/oauth/2.0/token"
+    ocr_url: "https://aip.baidubce.com/rest/2.0/ocr/v1"
+  # 腾讯OCR配置
+  tencent:
+    secret_id_env: "TENCENT_OCR_SECRET_ID"
+    secret_key_env: "TENCENT_OCR_SECRET_KEY"
+    region: "ap-beijing"
+  # 阿里云OCR配置
+  alibaba:
+    access_key_id_env: "ALIBABA_OCR_ACCESS_KEY_ID"
+    access_key_secret_env: "ALIBABA_OCR_ACCESS_KEY_SECRET"
+    endpoint: "ocr-api.cn-hangzhou.aliyuncs.com"
+  # Tesseract本地OCR（免费）
+  tesseract:
+    language: "chi_sim+eng"  # 中文+英文
+    custom_config: ""
+  # OCR超时和重试
+  timeout: 30
+  max_retries: 3
+  # 支持的图像格式
+  supported_formats:
+    - "image/png"
+    - "image/jpeg"
+    - "image/jpg"
+    - "image/bmp"
+    - "image/tiff"
+    - "application/pdf"

@@ -1,0 +1,103 @@
+# Model & Provider Configuration
+# Defines all available LLM providers and their routes
+
+providers:
+  openai:
+    provider_type: "openai"
+    adapter_class: "providers.adapters.openai_adapter.OpenAIAdapter"
+    base_url: "https://api.openai.com/v1"
+    max_retries: 3
+    timeout: 120
+    auth_env: "OPENAI_API_KEY"
+
+  anthropic:
+    provider_type: "anthropic"
+    adapter_class: "providers.adapters.anthropic_adapter.AnthropicAdapter"
+    base_url: "https://api.anthropic.com/v1"
+    max_retries: 3
+    timeout: 120
+    auth_env: "ANTHROPIC_API_KEY"
+
+  deepseek:
+    provider_type: "deepseek"
+    adapter_class: "providers.adapters.deepseek_adapter.DeepSeekAdapter"
+    base_url: "https://api.deepseek.com/v1"
+    max_retries: 3
+    timeout: 120
+    auth_env: "DEEPSEEK_API_KEY"
+
+  gemini:
+    provider_type: "gemini"
+    adapter_class: "providers.adapters.gemini_adapter.GeminiAdapter"
+    base_url: "https://generativelanguage.googleapis.com/v1"
+    max_retries: 3
+    timeout: 120
+    auth_env: "GEMINI_API_KEY"
+
+  local:
+    provider_type: "local"
+    adapter_class: "providers.adapters.local_adapter.LocalAdapter"
+    base_url: "http://localhost:11434/v1"
+    max_retries: 2
+    timeout: 60
+    auth_env: "LOCAL_LLM_URL"
+
+routes:
+  "gpt-4o":
+    provider: "openai"
+    upstream_model: "gpt-4o"
+    weight: 3
+    max_tokens: 4096
+    temperature: 0.7
+  "gpt-4o-mini":
+    provider: "openai"
+    upstream_model: "gpt-4o-mini"
+    weight: 2
+    max_tokens: 2048
+    temperature: 0.7
+  "gpt-4-turbo":
+    provider: "openai"
+    upstream_model: "gpt-4-turbo"
+    weight: 2
+    max_tokens: 4096
+    temperature: 0.7
+  "claude-sonnet":
+    provider: "anthropic"
+    upstream_model: "claude-3-5-sonnet-20241022"
+    weight: 3
+    max_tokens: 8192
+    temperature: 0.7
+  "claude-opus":
+    provider: "anthropic"
+    upstream_model: "claude-3-opus-20240229"
+    weight: 2
+    max_tokens: 8192
+    temperature: 0.5
+  "deepseek-chat":
+    provider: "deepseek"
+    upstream_model: "deepseek-chat"
+    weight: 2
+    max_tokens: 4096
+    temperature: 0.7
+  "gemini-pro":
+    provider: "gemini"
+    upstream_model: "gemini-1.5-pro"
+    weight: 2
+    max_tokens: 8192
+    temperature: 0.7
+  "local-model":
+    provider: "local"
+    upstream_model: "llama2"
+    weight: 1
+    max_tokens: 2048
+    temperature: 0.7
+
+# Default provider for fallback
+default_provider: "deepseek"
+
+# Load balancing strategy
+load_balancing:
+  strategy: "weighted_round_robin"  # weighted_round_robin, random, sequential
+  health_check_interval: 30
+  circuit_breaker_threshold: 5
+  circuit_breaker_timeout: 60

@@ -1,0 +1,62 @@
+{
+  "code\\main.py": {
+    "path": "code\\main.py",
+    "title": "main",
+    "type": "py",
+    "tags": [],
+    "size": 84,
+    "mtime": 1789532915.641438,
+    "readable": true,
+    "indexed_text": "def main():\r\n    print('hello agent-rl')\r\n\r\nif __name__ == '__main__':\r\n    main()\r\n"
+  },
+  "config\\app.yaml": {
+    "path": "config\\app.yaml",
+    "title": "app",
+    "type": "yaml",
+    "tags": [],
+    "size": 61,
+    "mtime": 1789532915.641438,
+    "readable": true,
+    "indexed_text": "server:\r\n  host: 0.0.0.0\r\n  port: 8000\r\nlog:\r\n  level: info\r\n"
+  },
+  "config\\deep_search.yaml": {
+    "path": "config\\deep_search.yaml",
+    "title": "deep_search",
+    "type": "yaml",
+    "tags": [],
+    "size": 67,
+    "mtime": 1789532915.641438,
+    "readable": true,
+    "indexed_text": "deep_search:\r\n  max_sub_queries: 4\r\n  top_k: 5\r\n  time_budget: 60\r\n"
+  },
+  "docs\\python简介.txt": {
+    "path": "docs\\python简介.txt",
+    "title": "python简介",
+    "type": "txt",
+    "tags": [],
+    "size": 115,
+    "mtime": 1789532915.641438,
+    "readable": true,
+    "indexed_text": "Python 是一种高级编程语言，由 Guido van Rossum 于 1991 年发布。设计哲学强调代码可读性。"
+  },
+  "docs\\强化学习.txt": {
+    "path": "docs\\强化学习.txt",
+    "title": "强化学习",
+    "type": "txt",
+    "tags": [],
+    "size": 149,
+    "mtime": 1789532915.641438,
+    "readable": true,
+    "indexed_text": "强化学习是机器学习分支，智能体通过与环境交互获得奖励信号学习最优策略。Q-learning 与策略梯度是主要方法。"
+  },
+  "other\\为我找到红警3的快捷方式和应用文件结构": {
+    "path": "other\\为我找到红警3的快捷方式和应用文件结构",
+    "title": "为我找到红警3的快捷方式和应用文件结构",
+    "type": "unknown",
+    "tags": [],
+    "size": 0,
+    "mtime": 1789535117.7296016,
+    "readable": false,
+    "indexed_text": "为我找到红警3的快捷方式和应用文件结构 文档"
+  }
+}

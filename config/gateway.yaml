@@ -1,0 +1,93 @@
+# Gateway Configuration
+# API Gateway settings for OpenAI-compatible proxy
+
+gateway:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+  reload: false
+  cors_origins: ["*"]
+
+auth:
+  enabled: true
+  token_expires_days: 90
+  default_rate_limit: 1000  # requests per hour
+  rate_limit_strategy: "token_bucket"  # token_bucket, sliding_window
+
+  # Default gateway keys (for testing)
+  default_keys:
+    - key: "sk-gateway-demo"
+      user_id: "demo_user"
+      expires_days: 30
+      max_requests: 10000
+      rate_limit: 100
+
+key_pool:
+  strategy: "weighted_round_robin"
+  health_check_interval: 30
+  circuit_breaker_threshold: 5
+  circuit_breaker_timeout: 60
+  keys:
+    - key: "sk-gw-openai-primary"
+      provider: "openai"
+      weight: 3
+    - key: "sk-gw-openai-secondary"
+      provider: "openai"
+      weight: 2
+    - key: "sk-gw-anthropic-primary"
+      provider: "anthropic"
+      weight: 3
+    - key: "sk-gw-deepseek-primary"
+      provider: "deepseek"
+      weight: 2
+
+failover:
+  max_retries: 3
+  retry_delay: 1.0
+  health_check_interval: 30
+  unhealthy_threshold: 3
+  recovery_timeout: 60
+  strategy: "provider_fallback"  # provider_fallback, key_rotation
+
+usage_tracking:
+  enabled: true
+  db_path: ".runtime/db/usage.db"
+  retention_days: 30
+  track_response_time: true
+  track_tokens: true
+  aggregation_interval: 3600  # seconds
+
+rate_limits:
+  default: 1000  # requests per hour
+  premium: 10000
+  free: 100
+
+  per_model:
+    "gpt-4o": 5000
+    "claude-sonnet": 3000
+    "deepseek-chat": 2000
+
+# OpenAI dynamic key engine via Vault
+vault_dynamic_keys:
+  enabled: true
+  engine: "openai"
+  role: "agent-rl-app"
+  ttl: "1h"
+  max_ttl: "24h"
+  rotation_period: "720h"  # 30 days
+  auto_generate: true
+
+# Logging
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: ".runtime/logs/gateway.log"
+  max_size_mb: 100
+  backup_count: 5
+
+# Health check endpoints
+health:
+  endpoint: "/health"
+  interval: 30
+  timeout: 5
+  upstream_check: true

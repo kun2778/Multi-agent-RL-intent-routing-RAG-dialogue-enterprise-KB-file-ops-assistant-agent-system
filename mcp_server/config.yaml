@@ -1,0 +1,102 @@
+# AgentRL Audit MCP Server Configuration
+# 用于Claude Desktop或其他MCP客户端的配置
+
+# Claude Desktop 配置示例
+# 将此内容添加到 Claude Desktop 的配置文件中:
+# - macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
+# - Windows: %APPDATA%\Claude\claude_desktop_config.json
+
+{
+  "mcpServers": {
+    "agentrl-audit": {
+      "command": "python",
+      "args": ["-m", "mcp_server.server", "--transport", "stdio"],
+      "cwd": "/path/to/AgentRL_IntentRouting",
+      "env": {
+        "PYTHONPATH": "/path/to/AgentRL_IntentRouting",
+        "BAIDU_OCR_API_KEY": "your-api-key",
+        "BAIDU_OCR_SECRET_KEY": "your-secret-key"
+      }
+    }
+  }
+}
+
+# SSE模式配置（远程访问）
+# 如果使用SSE传输，服务器启动后，客户端配置如下:
+
+{
+  "mcpServers": {
+    "agentrl-audit-remote": {
+      "url": "http://localhost:3000/sse"
+    }
+  }
+}
+
+# 服务器配置文件 (server_config.yaml)
+
+server:
+  name: "agentrl-audit-mcp"
+  version: "1.0.0"
+  description: "AgentRL审计与量化MCP服务"
+
+transport:
+  type: "stdio"  # 或 "sse"
+  # SSE模式配置
+  sse:
+    host: "0.0.0.0"
+    port: 3000
+    cors_origins: ["*"]
+
+# 数据库配置
+databases:
+  audit: ".runtime/db/audit.db"
+  metrics: ".runtime/db/metrics.db"
+
+# 日志配置
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# 工具配置
+tools:
+  audit:
+    max_query_results: 1000
+    default_time_range_days: 7
+  metrics:
+    default_benchmark_iterations: 100
+  rl_insights:
+    max_sample_queries: 50
+
+# 安全配置
+security:
+  enabled: false
+  # 如果启用，需要提供API密钥
+  api_key_header: "X-API-Key"
+
+# 审计配置
+audit:
+  enabled: true
+  log_tool_calls: true
+  log_level: "INFO"
+
+# OCR配置
+ocr:
+  # 可用的OCR提供商: baidu, tencent, tesseract
+  # baidu和tencent需要配置对应的API Key
+  # tesseract是免费的本地OCR，需要安装tesseract-ocr
+  provider: "tesseract"  # 默认使用免费的本地OCR
+  baidu:
+    api_key_env: "BAIDU_OCR_API_KEY"
+    secret_key_env: "BAIDU_OCR_SECRET_KEY"
+  tencent:
+    secret_id_env: "TENCENT_OCR_SECRET_ID"
+    secret_key_env: "TENCENT_OCR_SECRET_KEY"
+  tesseract:
+    language: "chi_sim+eng"  # 中文+英文
+  supported_formats:
+    - "image/png"
+    - "image/jpeg"
+    - "image/jpg"
+    - "image/bmp"
+    - "image/tiff"
+    - "application/pdf"
