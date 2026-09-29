@@ -308,9 +308,15 @@ class DeepSearchHandler:
 
     def _iterative_retrieve(self, query: str, round_num: int) -> RetrievalResult:
         from fact_query import build_retrieval_result
-        docs = self.corpus.search(query, self.top_k)
+        from rerank import rerank_documents
+        # 轮内流程：先多召回 → 再 rerank 精选
+        candidate_k = max(self.top_k * 3, self.top_k)
+        candidates = self.corpus.search(query, candidate_k)
+        docs = rerank_documents(query, candidates, top_k=self.top_k)
         result = build_retrieval_result(docs, query, round_num)
-        print(f"    [FAISS检索] 查询「{query}」返回 {len(result.documents)} 个文档")
+        backend = (docs[0].get("rerank_backend", "?") if docs else "-")
+        print(f"    [FAISS检索] 查询「{query}」召回 {len(candidates)} 个候选，"
+              f"rerank 精选出 {len(result.documents)} 个文档（后端: {backend}）")
         for doc in result.documents[:2]:
             print(f"      - [得分:{doc['score']:.4f}] {doc['path']}")
         return result

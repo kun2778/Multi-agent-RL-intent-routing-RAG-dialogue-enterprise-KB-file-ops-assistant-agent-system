@@ -1,0 +1,178 @@
+{
+  "created_at": "2026-09-29T17:25:50",
+  "regression_set": "eval\\regression\\regression.jsonl",
+  "metrics": {
+    "overall_accuracy": 0.774194,
+    "macro_accuracy": 0.733566,
+    "sample_count": 124,
+    "per_intent": {
+      "deep_search": {
+        "correct": 13,
+        "total": 13,
+        "accuracy": 1.0,
+        "misses": []
+      },
+      "modify_file": {
+        "correct": 12,
+        "total": 13,
+        "accuracy": 0.923077,
+        "misses": [
+          {
+            "text": "编辑文件 server.rs 加上 微服务",
+            "predicted": "add_file"
+          }
+        ]
+      },
+      "refactor": {
+        "correct": 13,
+        "total": 13,
+        "accuracy": 1.0,
+        "misses": []
+      },
+      "query": {
+        "correct": 13,
+        "total": 13,
+        "accuracy": 1.0,
+        "misses": []
+      },
+      "add_file": {
+        "correct": 12,
+        "total": 13,
+        "accuracy": 0.923077,
+        "misses": [
+          {
+            "text": "生成报告文件 log.txt，node_modules下面",
+            "predicted": "report_generate"
+          }
+        ]
+      },
+      "delete_file": {
+        "correct": 11,
+        "total": 13,
+        "accuracy": 0.846154,
+        "misses": [
+          {
+            "text": "旧版本，把 Cargo.toml 删了",
+            "predicted": "query"
+          },
+          {
+            "text": "把那个旧的 backup.py 删了",
+            "predicted": "query"
+          }
+        ]
+      },
+      "vague": {
+        "correct": 12,
+        "total": 15,
+        "accuracy": 0.8,
+        "misses": [
+          {
+            "text": "麻烦帮我早上好呗",
+            "predicted": "query"
+          },
+          {
+            "text": "test",
+            "predicted": "query"
+          },
+          {
+            "text": "今天过得怎么样",
+            "predicted": "query"
+          }
+        ]
+      },
+      "filename_query": {
+        "correct": 1,
+        "total": 13,
+        "accuracy": 0.076923,
+        "misses": [
+          {
+            "text": "为我找到最近添加的文件名",
+            "predicted": "query"
+          },
+          {
+            "text": "查找最近创建的文件",
+            "predicted": "query"
+          },
+          {
+            "text": "最近编辑过的文件名",
+            "predicted": "query"
+          },
+          {
+            "text": "最新添加的文件有哪些",
+            "predicted": "add_file"
+          },
+          {
+            "text": "最近保存的文件名列表",
+            "predicted": "query"
+          }
+        ]
+      },
+      "file_analysis": {
+        "correct": 1,
+        "total": 6,
+        "accuracy": 0.166667,
+        "misses": [
+          {
+            "text": "只读分析 notes.txt 的代码质量",
+            "predicted": "deep_search"
+          },
+          {
+            "text": "审查 config.yaml 的结构",
+            "predicted": "query"
+          },
+          {
+            "text": "检查 main.py 中的问题",
+            "predicted": "query"
+          },
+          {
+            "text": "诊断 app.json 的性能",
+            "predicted": "query"
+          },
+          {
+            "text": "评估 report.md 的复杂度",
+            "predicted": "deep_search"
+          }
+        ]
+      },
+      "file_scan": {
+        "correct": 6,
+        "total": 6,
+        "accuracy": 1.0,
+        "misses": []
+      },
+      "report_generate": {
+        "correct": 2,
+        "total": 6,
+        "accuracy": 0.333333,
+        "misses": [
+          {
+            "text": "生成代码审查报告，输出Markdown格式",
+            "predicted": "query"
+          },
+          {
+            "text": "生成代码审查报告",
+            "predicted": "query"
+          },
+          {
+            "text": "输出项目分析报告",
+            "predicted": "deep_search"
+          },
+          {
+            "text": "创建JSON格式的分析结果",
+            "predicted": "deep_search"
+          }
+        ]
+      }
+    },
+    "set_hash": "3909d7de82a792e7afdfc544203c16a50c4d1bbb3d6269a6ad741e9321f0f3a0"
+  },
+  "thresholds": {
+    "tolerance": 0.02,
+    "macro_tolerance": 0.03,
+    "min_per_intent_accuracy": 0.5,
+    "min_per_intent_accuracy_hard": 0.05,
+    "min_intent_samples": 5,
+    "min_samples": 50
+  },
+  "note": "由 regression_gate.py --update-baseline 生成，请勿手工编辑"
+}

@@ -25,10 +25,39 @@ class QueryRewriter:
                      "sort", "restructure", "structure"],
         "query": ["查", "找", "搜索", "查询", "检索", "什么", "怎么", "多少", "哪里", "谁", "何时",
                   "是否存在", "存在吗", "有哪些", "文件名", "search", "find", "query",
-                  "识别", "截屏", "截图", "ocr", "文字", "输出", "提取", "读取"],
+                  "识别", "截屏", "截图", "ocr", "文字", "输出", "提取", "读取",
+                  "显示", "列出", "查看", "打印", "返回", "最近", "最近保存", "最近修改",
+                  "最近创建", "最近添加", "最近操作", "最近使用", "最近编辑", "最近打开",
+                  "最近访问", "文件列表", "文件信息", "文件内容", "文件路径"],
         "deep_search": ["对比", "比较", "分析", "差异", "区别", "综合", "总结", "报告", "趋势",
                         "深入", "研究", "评估", "原因", "影响", "方案", "推荐",
                         "compare", "analyze", "analysis", "summary", "deep", "trend"],
+        # 新增意图
+        "file_analysis": [
+            "分析", "审查", "检查", "诊断", "评估", "扫描分析",
+            "analyze", "review", "inspect", "diagnose", "evaluate",
+            "只读分析", "深度分析", "代码分析", "静态分析",
+        ],
+        "file_scan": [
+            "扫描", "遍历", "列举", "列出", "统计", "清点",
+            "scan", "traverse", "list", "enumerate", "count",
+            "文件扫描", "目录扫描", "项目扫描",
+        ],
+        "report_generate": [
+            "报告", "生成报告", "输出报告", "汇总", "总结报告",
+            "report", "generate report", "summary report",
+            "markdown报告", "json报告", "csv报告",
+        ],
+        "filename_query": [
+            "最近添加的文件", "最近修改的文件", "最近创建的文件",
+            "最近编辑的文件", "最近使用的文件", "最近访问的文件",
+            "最近保存的文件", "最近操作的文件", "最近的文件",
+            "文件名搜索", "搜索文件名", "查找文件名",
+            "最新文件", "最新添加", "最新修改", "最新创建",
+            "最近添加的文件名", "最近修改的文件名", "最近创建的文件名",
+            "recent files", "find files", "search files",
+            "newly added", "recently modified", "recently created",
+        ],
     }
 
     FILE_RE = re.compile(r"[A-Za-z]:\\.+?\.[A-Za-z0-9]{1,6}|[\w.\-\\/]+\.[A-Za-z0-9]{1,6}", re.IGNORECASE)
@@ -75,7 +104,7 @@ class QueryRewriter:
         matches = self.FILE_RE.findall(query)
         if not matches:
             matches = self.STRONG_FILE_RE.findall(query)
-        
+
         cleaned = []
         for m in matches:
             t = m
@@ -84,9 +113,108 @@ class QueryRewriter:
                     t = t[len(word):].strip()
                     break
             if t:
-                cleaned.append(t)
-        
+                refined = self._refine_path(t)
+                cleaned.append(refined or t)
+
         return list(dict.fromkeys(cleaned))
+
+    @staticmethod
+    def _refine_path(path: str) -> Optional[str]:
+        """文件系统感知精炼：正则可能把中文指令吞进路径，此处截到真实存在的文件。
+
+        例: "C:\\...\\resume&essay路径下帮我输出resume .pdf"
+          → 尾部 ASCII 文件名 "resume .pdf"
+          → 目录段允许前缀匹配 → "C:\\...\\resume&essay"
+          → "C:\\...\\resume&essay\\resume .pdf"
+        """
+        import os
+        if not path:
+            return None
+        norm = path.replace("/", "\\")
+        if not os.path.isabs(norm):
+            return None
+        if os.path.isfile(norm):
+            return norm
+
+        # 1) 尾部提取 filename.ext —— 优先 ASCII，避免中文指令被吞进文件名
+        fm = re.search(r"([A-Za-z0-9_\- ]+\.[A-Za-z0-9]{1,6})$", norm)
+        if fm:
+            filename = fm.group(1)
+            dir_text = norm[:fm.start()].rstrip("\\/")
+        else:
+            fm2 = re.search(r"([^\\\\:*?\"<>|]+\.[A-Za-z0-9]{1,6})$", norm)
+            if not fm2:
+                return None
+            filename = fm2.group(1)
+            dir_text = norm[:fm2.start()].rstrip("\\/")
+
+        base = QueryRewriter._longest_existing_dir(dir_text)
+        if not base:
+            return None
+
+        cand = base + "\\" + filename
+        if os.path.isfile(cand):
+            return cand
+
+        # 4) 文件名仍被中文指令污染：按扩展名在 base 内消歧
+        ext = os.path.splitext(filename)[1].lower()
+        if not ext:
+            return None
+        try:
+            names = [n for n in os.listdir(base)
+                     if os.path.isfile(os.path.join(base, n)) and n.lower().endswith(ext)]
+        except OSError:
+            return None
+        if filename in names:
+            return os.path.join(base, filename)
+        # 文件名是真实名的后缀，或真实名是提取名的后缀
+        for n in names:
+            if n.endswith(filename) or filename.endswith(n):
+                return os.path.join(base, n)
+        if len(names) == 1:
+            return os.path.join(base, names[0])
+        # 最长公共后缀启发
+        best, best_len = None, 0
+        for n in names:
+            k = 0
+            while k < min(len(n), len(filename)) and n[-(k + 1)].lower() == filename[-(k + 1)].lower():
+                k += 1
+            if k > best_len and k >= len(os.path.splitext(filename)[1]):
+                best, best_len = n, k
+        return os.path.join(base, best) if best else None
+
+    @staticmethod
+    def _longest_existing_dir(dir_text: str) -> Optional[str]:
+        """在 dir_text 中找最长已存在的目录前缀；最后一段允许与中文指令粘连（前缀匹配）。"""
+        import os
+        if not dir_text:
+            return None
+        parts = dir_text.split("\\")
+        acc: List[str] = []
+        for i, part in enumerate(parts):
+            if i == 0:
+                if os.path.isdir(part):
+                    acc.append(part)
+                else:
+                    return "\\".join(acc) or None
+                continue
+            if not part:
+                continue
+            trial = "\\".join(acc + [part])
+            if os.path.isdir(trial):
+                acc.append(part)
+                continue
+            # 粘连段：从长到短试前缀
+            found = None
+            for j in range(len(part) - 1, 0, -1):
+                trial = "\\".join(acc + [part[:j]])
+                if os.path.isdir(trial):
+                    found = part[:j]
+                    break
+            if found:
+                acc.append(found)
+            break
+        return "\\".join(acc) if acc else None
 
     def rewrite(self, query: str) -> Tuple[str, List[str], List[str]]:
         """重写查询，提取目标文件/实体/关系。返回 (rewritten, entities, relations)。"""
@@ -193,6 +321,16 @@ class QueryRewriter:
             "系统", "程序", "软件", "安装", "启动",
             "红警", "游戏", "应用", "exe",
         ],
+        # 新增子意图
+        QuerySubIntent.QUERY_FILE_SCAN: [
+            "扫描", "遍历", "列举", "统计", "文件扫描", "目录扫描",
+        ],
+        QuerySubIntent.QUERY_FILE_ANALYZE: [
+            "分析", "审查", "检查", "诊断", "评估", "代码分析",
+        ],
+        QuerySubIntent.QUERY_READONLY_REPORT: [
+            "报告", "生成报告", "审查报告", "输出报告",
+        ],
     }
 
     QUERY_SUBINTENT_PRIORITY = {
@@ -204,6 +342,10 @@ class QueryRewriter:
         QuerySubIntent.QUERY_CONTENT: ["内容", "读取", "查看内容"],
         QuerySubIntent.QUERY_SEARCH: ["搜索", "查找", "检索"],
         QuerySubIntent.QUERY_SYSTEM: ["系统", "程序", "软件"],
+        # 新增子意图优先级
+        QuerySubIntent.QUERY_FILE_SCAN: ["扫描", "遍历", "列举"],
+        QuerySubIntent.QUERY_FILE_ANALYZE: ["分析", "审查", "检查"],
+        QuerySubIntent.QUERY_READONLY_REPORT: ["报告", "审查报告", "生成报告"],
     }
 
     IMAGE_KEYWORDS = [
@@ -307,3 +449,76 @@ class QueryRewriter:
         recent_keywords = ["最近", "刚才", "最新", "刚截", "recent", "latest", "last"]
         screenshot_keywords = ["截屏", "截图", "屏幕", "screen", "screenshot"]
         return any(rk in q for rk in recent_keywords) and any(sk in q for sk in screenshot_keywords)
+
+    def extract_readonly_constraints(self, query: str) -> Dict[str, any]:
+        """提取只读约束和排除条件。"""
+        constraints = {
+            "readonly": False,
+            "exclude_dirs": [],
+            "ignore_files": [],
+            "exclude_patterns": [],
+        }
+        
+        q = query.lower()
+        
+        # 只读检测
+        readonly_kws = ["只读", "readonly", "read-only", "不修改", "不移动", 
+                        "不删除", "不重命名", "不覆盖"]
+        constraints["readonly"] = any(kw in q for kw in readonly_kws)
+        
+        # 排除目录检测
+        exclude_dir_patterns = [
+            r"排除目录[：:]?\s*(.+?)(?:[,，;；]|$)",
+            r"忽略目录[：:]?\s*(.+?)(?:[,，;；]|$)",
+            r"不包含目录[：:]?\s*(.+?)(?:[,，;；]|$)",
+        ]
+        for pattern in exclude_dir_patterns:
+            matches = re.findall(pattern, q)
+            constraints["exclude_dirs"].extend(matches)
+        
+        # 忽略文件检测
+        ignore_file_patterns = [
+            r"忽略文件[：:]?\s*(.+?)(?:[,，;；]|$)",
+            r"排除文件[：:]?\s*(.+?)(?:[,，;；]|$)",
+        ]
+        for pattern in ignore_file_patterns:
+            matches = re.findall(pattern, q)
+            constraints["ignore_files"].extend(matches)
+        
+        # 排除模式检测（如 >5MB、二进制、符号链接）
+        exclude_pattern_kws = [
+            "符号链接", "只读文件", "权限不足", "二进制", 
+            "编码无法识别", ">5MB", "大于5MB",
+            "symlink", "readonly", "permission", "binary",
+        ]
+        constraints["exclude_patterns"] = [
+            kw for kw in exclude_pattern_kws if kw in q
+        ]
+        
+        return constraints
+
+    def extract_analysis_params(self, query: str) -> Dict[str, any]:
+        """提取分析参数（相似度阈值、函数复杂度等）。"""
+        params = {}
+        
+        q = query.lower()
+        
+        # 相似度阈值
+        similarity_match = re.search(r"相似度\s*(\d+\.?\d*)", q)
+        if similarity_match:
+            params["similarity_threshold"] = float(similarity_match.group(1))
+        
+        # 函数复杂度阈值
+        complexity_match = re.search(r"复杂度\s*(\d+)", q)
+        if complexity_match:
+            params["complexity_threshold"] = int(complexity_match.group(1))
+        
+        # 特殊标记检测
+        marker_kws = ["TODO", "FIXME", "XXX", "HACK", "BUG", "WARNING"]
+        params["markers"] = [kw for kw in marker_kws if kw.lower() in q]
+        
+        # git log检测
+        if "git log" in q or "git提交" in q or "git提交记录" in q:
+            params["include_git_log"] = True
+        
+        return params

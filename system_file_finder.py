@@ -6,6 +6,8 @@ import subprocess
 import winreg
 from typing import Any, Dict, List, Optional, Tuple
 from runtime_paths import TEMP_DIR, CACHE_DIR
+from atomic_io import atomic_write_json, atomic_write_text
+from write_queue import get_default_write_queue
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 _HEX_DIGIT = re.compile(r"^[0-9]$")
@@ -215,8 +217,7 @@ class SystemFileFinder:
         )
         entries = []
         try:
-            with open(ps_path, "w", encoding="utf-8") as f:
-                f.write(ps)
+            atomic_write_text(ps_path, ps)
             subprocess.run(
                 ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps_path],
                 timeout=90, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -275,6 +276,7 @@ class SystemFileFinder:
     def _pf_load_from_disk(self, now: float) -> Optional[List[Dict]]:
         path = self._pf_cache_path()
         try:
+            get_default_write_queue().flush()  # 先排空排队中的写，避免读到旧缓存
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             if now - data.get("ts", 0) > 86400 or not data.get("files"):
@@ -290,9 +292,12 @@ class SystemFileFinder:
             return None
 
     def _pf_save_to_disk(self, entries: List[Dict], now: float):
+        payload = {"ts": now, "files": [e["path"] for e in entries]}
         try:
-            with open(self._pf_cache_path(), "w", encoding="utf-8") as f:
-                json.dump({"ts": now, "files": [e["path"] for e in entries]}, f)
+            # 缓存写是纯 fire-and-forget：交给单写者队列，不阻塞扫描路径
+            get_default_write_queue().submit_json(self._pf_cache_path(), payload)
+        except RuntimeError:
+            atomic_write_json(self._pf_cache_path(), payload)
         except OSError:
             pass
 

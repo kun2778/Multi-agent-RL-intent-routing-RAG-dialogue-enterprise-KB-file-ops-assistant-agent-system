@@ -19,7 +19,7 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding='utf-8')
 
 
-def test_single_query(query: str, expected_intent: str = None):
+def run_single_query(query: str, expected_intent: str = None):
     """Test a single query with both architectures."""
     print(f"\n{'='*70}")
     print(f"  测试查询: {query}")
@@ -101,7 +101,7 @@ def run_all_tests():
     total = len(test_cases)
 
     for query, expected in test_cases:
-        result = test_single_query(query, expected)
+        result = run_single_query(query, expected)
         if result == expected:
             correct += 1
 

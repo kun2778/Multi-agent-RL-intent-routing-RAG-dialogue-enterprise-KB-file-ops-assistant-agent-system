@@ -17,9 +17,14 @@ python-dotenv>=1.0.0
 hvac>=0.12.0
 boto3>=1.28.0
 azure-keyvault-secrets>=4.7.0
+azure-identity>=1.12.0
 google-generativeai>=0.3.0
 anthropic>=0.18.0
 ollama>=0.1.0
+sentence-transformers>=2.2.0
+
+# PDF 解析（可选后端之一，缺失时回退 pdfplumber/PyMuPDF/内置解析）
+pypdf>=4.0.0
 
 # MCP (Model Context Protocol) Dependencies
 mcp>=1.0.0

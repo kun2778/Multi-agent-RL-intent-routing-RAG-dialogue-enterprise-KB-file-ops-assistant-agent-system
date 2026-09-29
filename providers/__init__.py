@@ -11,7 +11,7 @@ class ProviderManager:
 
     def __init__(self):
         self.config_loader = get_config_loader()
-        self.secret_manager = SecretManager()
+        self.secret_manager = SecretManager(self.config_loader.load_secrets_config())
         self._setup()
 
     def _setup(self):

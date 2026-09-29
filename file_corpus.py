@@ -27,7 +27,9 @@ except ImportError:
 
 from registry_db import RegistryDB, compute_file_hash
 from parallel_scanner import ParallelScanner, ScanStats, READABLE_EXTENSIONS
+from embedding import create_embedder
 from runtime_paths import DB_DIR, FAISS_DIR, WORKSPACE_DIR
+from atomic_io import atomic_write_text, decode_bytes, open_read
 
 
 # 可被整理分类的文件夹
@@ -37,57 +39,6 @@ FOLDER_CATEGORIES = {
     "docs": [".txt", ".md", ".pdf", ".doc", ".docx", ".slnx", ".mui", ".log"],
     "data": [".csv", ".sql", ".xlsx", ".xls"],
 }
-
-
-def _tokenize(text: str) -> List[str]:
-    """中英文混合分词：ASCII 单词 + CJK 单字 + CJK 二元组。"""
-    tokens = re.findall(r'[A-Za-z0-9_]+', text.lower())
-    cjk = re.findall(r'[\u4e00-\u9fff]', text)
-    tokens.extend(cjk)
-    tokens.extend([''.join(cjk[i:i + 2]) for i in range(len(cjk) - 1)])
-    return tokens
-
-
-class TfidfEmbedder:
-    """TF-IDF 嵌入器，用于将文本映射为稠密向量（向量索引的输入）。"""
-
-    def __init__(self, dimension: int = 128):
-        self.dimension = dimension
-        self.vocab: Dict[str, int] = {}
-        self.idf: Dict[str, float] = {}
-        self.is_fitted = False
-
-    def fit(self, texts: List[str]):
-        doc_counts = Counter()
-        all_tokens: List[str] = []
-        for text in texts:
-            tokens = _tokenize(text)
-            all_tokens.extend(tokens)
-            for t in set(tokens):
-                doc_counts[t] += 1
-        total_docs = max(len(texts), 1)
-        for token, count in doc_counts.items():
-            self.idf[token] = np.log((total_docs + 1) / (count + 1)) + 1
-        self.vocab = {t: i for i, t in enumerate(set(all_tokens))}
-        self.is_fitted = True
-
-    def transform(self, text: str) -> np.ndarray:
-        if not self.is_fitted:
-            return np.random.randn(self.dimension).astype(np.float32)
-        tokens = _tokenize(text)
-        vector = np.zeros(self.dimension, dtype=np.float32)
-        counts = Counter(tokens)
-        total = max(len(tokens), 1)
-        for token, count in counts.items():
-            if token in self.vocab:
-                idx = self.vocab[token] % self.dimension
-                vector[idx] = (count / total) * self.idf.get(token, 1.0)
-        norm = np.linalg.norm(vector)
-        if norm > 0:
-            vector = vector / norm
-        else:
-            vector = np.random.randn(self.dimension).astype(np.float32) * 0.01
-        return vector
 
 
 class VectorIndex:
@@ -145,18 +96,21 @@ class VectorIndex:
 
 
 def _read_text(path: str) -> Optional[str]:
-    """尝试以多种编码读取文本文件；二进制文件返回 None。"""
+    """尝试以多种编码读取文本文件；PDF 走专用解析；二进制文件返回 None。"""
     ext = os.path.splitext(path)[1].lstrip('.').lower()
+    # PDF：使用 pdf_parser 提取文本
+    if ext == 'pdf':
+        try:
+            from pdf_parser import extract_pdf_text
+            return extract_pdf_text(path)
+        except Exception:
+            return None
     if ext not in READABLE_EXTENSIONS:
         return None
     try:
-        raw = open(path, "rb").read()
-        for enc in ("utf-8", "gbk", "gb18030", "latin-1"):
-            try:
-                return raw.decode(enc)
-            except (UnicodeDecodeError, ValueError):
-                continue
-        return raw.decode("latin-1", errors="ignore")
+        # 大文件走只读 mmap（open_read 阈值以上），小文件仍是一次性 bytes
+        with open_read(path) as raw:
+            return decode_bytes(raw)
     except OSError:
         return None
 
@@ -187,8 +141,8 @@ class FileCorpus:
         self.root = os.path.abspath(root or str(WORKSPACE_DIR))
         self.trash_dir = os.path.join(self.root, ".trash")
         self.backup_dir = os.path.join(self.root, ".backup")
-        self.embedder = TfidfEmbedder(dimension=128)
-        self.index = VectorIndex(dimension=128)
+        self.embedder = create_embedder(backend="auto", dimension=128)
+        self.index = VectorIndex(dimension=self.embedder.dimension)
         self.max_workers = max_workers
         self.max_file_size = max_file_size
         self.excluded_dirs = excluded_dirs
@@ -208,7 +162,7 @@ class FileCorpus:
                 from faiss_store import FaissVectorStore
                 FAISS_DIR.mkdir(parents=True, exist_ok=True)
                 self.faiss_store = FaissVectorStore(
-                    dimension=128, chunk_size=500, chunk_overlap=75,
+                    dimension=self.embedder.dimension, chunk_size=500, chunk_overlap=75,
                     persist_dir=str(FAISS_DIR),
                 )
                 self.faiss_store.load(faiss_store_name)
@@ -293,8 +247,7 @@ class FileCorpus:
             return False, f"文件 {rel_path} 已存在，请改用修改操作", {}
 
         os.makedirs(os.path.dirname(abs_path) or self.root, exist_ok=True)
-        with open(abs_path, "w", encoding="utf-8") as f:
-            f.write(content)
+        atomic_write_text(abs_path, content)
 
         # 更新注册表
         ext = os.path.splitext(rel_path)[1].lstrip('.').lower()
@@ -359,8 +312,7 @@ class FileCorpus:
             bak_path = os.path.join(self.backup_dir, f"{os.path.basename(rel_path)}.{int(time.time())}.bak")
             try:
                 shutil.copy2(abs_path, bak_path)
-                with open(abs_path, "w", encoding="utf-8") as f:
-                    f.write(new_content)
+                atomic_write_text(abs_path, new_content)
                 changed.append("内容")
             except OSError as e:
                 return False, f"写入失败: {e}", {}
@@ -479,7 +431,7 @@ class FileCorpus:
         readable = self.registry.get_all_readable()
 
         if not readable:
-            self.embedder = TfidfEmbedder(dimension=128)
+            self.embedder = create_embedder(backend="auto", dimension=128)
             self.embedder.is_fitted = False
             return
 
@@ -572,7 +524,7 @@ class FileCorpus:
         # 回退到内置索引
         if self.index.stats()["total_docs"] == 0:
             return []
-        qv = self.embedder.transform(query) if self.embedder.is_fitted else np.zeros(128, dtype=np.float32)
+        qv = self.embedder.transform(query) if self.embedder.is_fitted else np.zeros(self.embedder.dimension, dtype=np.float32)
         docs, scores = self.index.search(qv, top_k * 2 if filter_noise else top_k)  # 检索更多结果以便过滤
         
         results = []
@@ -637,10 +589,22 @@ class FileCorpus:
 
     # ------------------------------------------------------------------ 工具
     def _resolve_target(self, target: str) -> Optional[str]:
-        """把用户输入的目标解析为注册表路径（支持精确/模糊匹配）。"""
+        """把用户输入的目标解析为注册表路径（支持精确/模糊匹配）。
+
+        额外支持：工作区外的绝对路径 — 若磁盘上真实存在且扩展名可读，
+        返回该绝对路径（read_text/get_file_metadata 通过 _full_path 识别）。
+        """
         if not target:
             return None
-        target = target.strip().replace("/", "\\").lstrip(".\\/")
+
+        # 工作区外绝对路径（只读放行）
+        raw = target.strip().replace("/", "\\")
+        if os.path.isabs(raw) and os.path.isfile(raw):
+            ext = os.path.splitext(raw)[1].lstrip(".").lower()
+            if ext == "pdf" or ext in READABLE_EXTENSIONS:
+                return raw
+
+        target = raw.lstrip(".\\/")
 
         all_paths = self.registry.get_all_paths()
 
@@ -672,12 +636,18 @@ class FileCorpus:
         fuzzy = [r for r in all_paths if base.lower() in r.lower()]
         return fuzzy[0] if len(fuzzy) == 1 else (fuzzy[0] if fuzzy else None)
 
+    def _full_path(self, rel: str) -> str:
+        """注册表内相对路径 → workspace 下绝对路径；已是绝对路径则原样返回。"""
+        if os.path.isabs(rel):
+            return rel
+        return os.path.join(self.root, rel)
+
     def read_text(self, target: str) -> Optional[str]:
-        """读取文件文本内容。"""
+        """读取文件文本内容（支持 workspace 注册表 + 工作区外绝对路径）。"""
         rel = self._resolve_target(target)
         if not rel:
             return None
-        return _read_text(os.path.join(self.root, rel))
+        return _read_text(self._full_path(rel))
 
     def get_file_metadata(self, target: str) -> Optional[str]:
         """获取文件元数据信息。"""
@@ -685,7 +655,7 @@ class FileCorpus:
         if not rel:
             return None
 
-        full_path = os.path.join(self.root, rel)
+        full_path = self._full_path(rel)
         if not os.path.exists(full_path):
             return None
 
@@ -731,7 +701,7 @@ class FileCorpus:
             from faiss_store import FaissVectorStore
             FAISS_DIR.mkdir(parents=True, exist_ok=True)
             self.faiss_store = FaissVectorStore(
-                dimension=128, chunk_size=500, chunk_overlap=75,
+                dimension=self.embedder.dimension, chunk_size=500, chunk_overlap=75,
                 persist_dir=str(FAISS_DIR),
             )
             self.faiss_store_name = name

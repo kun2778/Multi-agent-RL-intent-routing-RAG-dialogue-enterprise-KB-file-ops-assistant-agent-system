@@ -1,0 +1,603 @@
+"""回归 gate —— 固定回归集 + 基线 + 阈值 + CI 自动拦截。
+
+定位：增量学习改造的**安全网**。任何会改动意图识别行为的变更
+（奖励表、投票权重、模型 checkpoint、检索语料、Prompt），
+在合入前必须先过本 gate，否则 CI 直接失败。
+
+三个组成部分：
+
+1. **固定回归集** ``eval/regression/regression.jsonl``
+   - 确定性构造：按 ``intent_corpus.csv`` 文件顺序每类取前 N 条（不 shuffle）
+   - 追加 ``AgentRL.EVAL_REAL_SAMPLES`` 的模板外真实样本
+   - 内容哈希 ``sha256`` 记入基线；回归集被篡改 → gate 直接失败
+
+2. **基线** ``eval/regression/baseline.json``
+   - 记录某次已知良好的 overall / macro / per-intent 准确率 + 回归集哈希 + 阈值
+   - 只有显式 ``--update-baseline`` 才会重写
+
+3. **阈值判定 + CI 拦截**
+   - overall 准确率较基线下降不得超过 ``tolerance``
+   - macro 准确率下降不得超过 ``macro_tolerance``
+   - 任一类准确率不得低于 ``min_per_intent_accuracy``
+   - 任一类样本数低于 ``min_intent_samples`` → 回归集不完整，判失败
+   - 非 0 退出码 → CI 拦截
+
+用法::
+
+    python regression_gate.py                  # 跑 gate（CI 默认行为）
+    python regression_gate.py --update-baseline # 重新固化基线（人工触发）
+    python regression_gate.py --json           # 机器可读输出
+    python regression_gate.py --rebuild-set     # 重建固定回归集（会改哈希）
+
+退出码：0 通过 / 1 未通过（回归） / 2 出错（缺基线、依赖缺失等）
+"""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import csv
+import hashlib
+import json
+import os
+import sys
+import time
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+from atomic_io import atomic_write_json
+from runtime_paths import PROJECT_ROOT
+
+# ---------------------------------------------------------------- 路径
+# 注意：.runtime/ 与 models/ 均被 .gitignore 忽略，基线与回归集必须
+# 放在受版本控制的目录下，否则 CI 每次 checkout 都拿不到基线。
+GATE_DIR = PROJECT_ROOT / "eval" / "regression"
+REGRESSION_SET_PATH = GATE_DIR / "regression.jsonl"
+BASELINE_PATH = GATE_DIR / "baseline.json"
+CORPUS_CSV = PROJECT_ROOT / "intent_corpus.csv"
+
+PER_LABEL = 12          # 每类从语料库取多少条（文件顺序前 N，确定性）
+TEMPLATE_LABEL_MIN = 6  # 语料库缺失的意图：用固定模板补足到该数量
+MAX_TEXT_LEN = 300      # 单条样本文本长度上限
+
+EXIT_PASS = 0
+EXIT_FAIL = 1
+EXIT_ERROR = 2
+
+
+# ================================================================ 数据结构
+@dataclass
+class GateThresholds:
+    """阈值配置（随基线一起持久化）。"""
+
+    tolerance: float = 0.02           # overall 准确率相对基线最大允许跌幅
+    macro_tolerance: float = 0.03     # macro 准确率相对基线最大允许跌幅
+    min_per_intent_accuracy: float = 0.50   # 单类准确率下限（仅当基线自身达标时生效）
+    min_per_intent_accuracy_hard: float = 0.05  # 单类绝对兜底下限（恒定生效）
+    min_intent_samples: int = 5       # 单类最少样本数
+    min_samples: int = 50             # 回归集最少样本数
+
+    def to_dict(self) -> dict:
+        return {
+            "tolerance": self.tolerance,
+            "macro_tolerance": self.macro_tolerance,
+            "min_per_intent_accuracy": self.min_per_intent_accuracy,
+            "min_per_intent_accuracy_hard": self.min_per_intent_accuracy_hard,
+            "min_intent_samples": self.min_intent_samples,
+            "min_samples": self.min_samples,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Optional[dict]) -> "GateThresholds":
+        base = cls()
+        if not d:
+            return base
+        for key, value in d.items():
+            if hasattr(base, key):
+                setattr(base, key, value)
+        return base
+
+
+@dataclass
+class GateMetrics:
+    overall_accuracy: float = 0.0
+    macro_accuracy: float = 0.0
+    sample_count: int = 0
+    per_intent: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    set_hash: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "overall_accuracy": round(self.overall_accuracy, 6),
+            "macro_accuracy": round(self.macro_accuracy, 6),
+            "sample_count": self.sample_count,
+            "per_intent": self.per_intent,
+            "set_hash": self.set_hash,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "GateMetrics":
+        m = cls()
+        m.overall_accuracy = float(d.get("overall_accuracy", 0.0))
+        m.macro_accuracy = float(d.get("macro_accuracy", 0.0))
+        m.sample_count = int(d.get("sample_count", 0))
+        m.per_intent = dict(d.get("per_intent", {}))
+        m.set_hash = str(d.get("set_hash", ""))
+        return m
+
+
+@dataclass
+class GateResult:
+    passed: bool
+    reasons: List[str] = field(default_factory=list)
+    metrics: Optional[GateMetrics] = None
+    baseline: Optional[GateMetrics] = None
+    thresholds: Optional[GateThresholds] = None
+    error: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "passed": self.passed,
+            "reasons": self.reasons,
+            "metrics": self.metrics.to_dict() if self.metrics else None,
+            "baseline": self.baseline.to_dict() if self.baseline else None,
+            "thresholds": self.thresholds.to_dict() if self.thresholds else None,
+            "error": self.error,
+        }
+
+
+# ================================================================ 固定回归集
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _load_corpus_labels() -> Dict[str, List[str]]:
+    """按语料库文件顺序读取 label → texts（顺序即确定性，不 shuffle）。"""
+    buckets: Dict[str, List[str]] = {}
+    with open(CORPUS_CSV, "r", encoding="utf-8-sig", newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            text = (row.get("text") or "").strip()
+            label = (row.get("label") or "").strip()
+            if not text or not label:
+                continue
+            buckets.setdefault(label, []).append(text[:MAX_TEXT_LEN])
+    return buckets
+
+
+def build_regression_set() -> List[Dict[str, str]]:
+    """确定性构造固定回归集。
+
+    - 语料库部分：每类取文件顺序前 ``PER_LABEL`` 条（无随机）
+    - 真实样本部分：``AgentRL.EVAL_REAL_SAMPLES``（模板外样本，覆盖全部意图）
+    - 模板补足部分：语料库没有的意图（file_analysis / file_scan /
+      report_generate 等）用 ``TASK_TEMPLATES`` 前若干条固定格式化补足，
+      保证每个意图都够 ``min_intent_samples`` 条，否则类别级阈值无法判定
+    - 按 text 去重，保持首次出现顺序
+    """
+    samples: List[Dict[str, str]] = []
+    seen: set = set()
+
+    def add(text: str, label: str) -> None:
+        text = (text or "").strip()[:MAX_TEXT_LEN]
+        if not text or not label or text in seen:
+            return
+        seen.add(text)
+        samples.append({"text": text, "label": label})
+
+    if CORPUS_CSV.exists():
+        for label, texts in _load_corpus_labels().items():
+            for text in texts[:PER_LABEL]:
+                add(text, label)
+
+    # 延迟导入：仅重建集合时才加载 torch
+    from agent_rl import AgentRL
+    for label_str, text in AgentRL.EVAL_REAL_SAMPLES.items():
+        add(text, label_str.rstrip("_0123456789"))
+
+    # 语料库缺失的意图：用固定模板补足（不 shuffle、不取随机文件名）
+    counts: Dict[str, int] = {}
+    for s in samples:
+        counts[s["label"]] = counts.get(s["label"], 0) + 1
+    files = AgentRL.SAMPLE_FILES
+    content = AgentRL.SAMPLE_CONTENT
+    for intent, templates in AgentRL.TASK_TEMPLATES.items():
+        need = TEMPLATE_LABEL_MIN - counts.get(intent.value, 0)
+        if need <= 0:
+            continue
+        for idx, tpl in enumerate(templates[:need]):
+            try:
+                text = tpl.format(f=files[idx % len(files)],
+                                  g=files[(idx + 1) % len(files)],
+                                  c=content)
+            except (KeyError, IndexError):
+                continue
+            add(text, intent.value)
+
+    return samples
+
+
+def ensure_regression_set(force_rebuild: bool = False) -> Tuple[List[Dict[str, str]], str]:
+    """读取（或首次创建）固定回归集，返回 (样本, sha256)。"""
+    GATE_DIR.mkdir(parents=True, exist_ok=True)
+    if force_rebuild or not REGRESSION_SET_PATH.exists():
+        samples = build_regression_set()
+        payload = "\n".join(
+            json.dumps(s, ensure_ascii=False, sort_keys=True) for s in samples
+        )
+        from atomic_io import atomic_write_text
+        atomic_write_text(REGRESSION_SET_PATH, payload + "\n")
+        samples = build_regression_set()  # 重新读盘，保证哈希与磁盘一致
+
+    with open(REGRESSION_SET_PATH, "r", encoding="utf-8") as fh:
+        samples = [json.loads(line) for line in fh if line.strip()]
+    return samples, _sha256_file(REGRESSION_SET_PATH)
+
+
+# ================================================================ 确定性预测
+class _NoLLM:
+    """禁用 LLM 路：CI 无 key，且 LLM 采样不可复现。"""
+
+    def classify(self, query: str):
+        return None
+
+
+def seed_everything(seed: int = 0) -> None:
+    """固定所有随机源。
+
+    必须在 **构造 AgentRL 之前** 调用：没有 checkpoint 时网络是随机初始化的，
+    不固定种子则每次进程的权重都不同，gate 无法复现。
+    """
+    import random as _random
+    _random.seed(seed)
+    try:
+        import numpy as _np
+        _np.random.seed(seed)
+    except Exception:
+        pass
+    try:
+        import torch as _torch
+        _torch.manual_seed(seed)
+        if _torch.cuda.is_available():  # pragma: no cover - CI 无 GPU
+            _torch.cuda.manual_seed_all(seed)
+    except Exception:
+        pass
+    # 让子进程也继承固定哈希种子（set/dict 迭代顺序才稳定）
+    os.environ["PYTHONHASHSEED"] = str(seed)
+
+
+@contextlib.contextmanager
+def deterministic_mode(agent):
+    """把 AgentRL 切到可复现的推理模式：ε=0、关 LLM、关 MARL、关 dropout。"""
+    saved = (agent.epsilon, agent.marl_vote, agent.llm_classifier)
+    nets = [agent.q_network, agent.classifier]
+    engram = getattr(agent, "engram", None)
+    if engram is not None:
+        nets.append(engram)
+    for net in nets:
+        if hasattr(net, "eval"):
+            net.eval()
+    agent.epsilon = 0.0
+    agent.marl_vote = False
+    agent.llm_classifier = _NoLLM()
+    seed_everything(0)
+    try:
+        yield
+    finally:
+        agent.epsilon, agent.marl_vote, agent.llm_classifier = saved
+        for net in nets:
+            if hasattr(net, "train"):
+                net.train()
+
+
+def evaluate_set(agent, samples: List[Dict[str, str]]) -> GateMetrics:
+    """在固定回归集上跑一遍意图识别，产出准确率指标。"""
+    from agent_state import AgentState, IntentType
+
+    valid_labels = {it.value for it in IntentType}
+    per_intent: Dict[str, Dict[str, Any]] = {}
+    correct_total = 0
+    used = 0
+
+    with deterministic_mode(agent), _torch_no_grad():
+        for sample in samples:
+            text, label = sample.get("text", ""), sample.get("label", "")
+            if label not in valid_labels:
+                continue
+            state = AgentState()
+            state.increment_round()
+            # 冻结时间维度：state_vector 含 elapsed_time/retrieval_budget，
+            # 若随墙钟漂移，同一条样本在不同次运行会得到不同特征。
+            # 把预算拉到极大 → 该项恒等于 0（低于 float32 精度）。
+            state.time_started = time.time()
+            state.retrieval_budget = 1e9
+            try:
+                predicted, _conf = agent.classify_intent(text, state)
+            except Exception:
+                predicted = None
+            used += 1
+            bucket = per_intent.setdefault(
+                label, {"correct": 0, "total": 0, "accuracy": 0.0,
+                        "misses": []}
+            )
+            bucket["total"] += 1
+            ok = predicted is not None and predicted.value == label
+            if ok:
+                bucket["correct"] += 1
+                correct_total += 1
+            elif len(bucket["misses"]) < 5:
+                bucket["misses"].append({
+                    "text": text[:60],
+                    "predicted": predicted.value if predicted else None,
+                })
+
+    for bucket in per_intent.values():
+        bucket["accuracy"] = (
+            round(bucket["correct"] / bucket["total"], 6) if bucket["total"] else 0.0
+        )
+
+    accs = [b["accuracy"] for b in per_intent.values() if b["total"]]
+    return GateMetrics(
+        overall_accuracy=(correct_total / used) if used else 0.0,
+        macro_accuracy=(sum(accs) / len(accs)) if accs else 0.0,
+        sample_count=used,
+        per_intent=per_intent,
+    )
+
+
+class _torch_no_grad:
+    """无 torch 环境下也能跑；有 torch 时进入 no_grad。"""
+
+    def __enter__(self):
+        try:
+            import torch
+            self._ctx = torch.no_grad()
+            return self._ctx.__enter__()
+        except Exception:
+            self._ctx = None
+            return None
+
+    def __exit__(self, *exc):
+        if self._ctx is not None:
+            return self._ctx.__exit__(*exc)
+        return False
+
+
+# ================================================================ 基线
+def _reset_retriever() -> None:
+    """丢弃已构造的检索索引，让它在下次查询时从语料重建。
+
+    gate 的结论必须可跨机器复现：本地可能命中几周前的缓存（甚至是旧版
+    分词/编号逻辑留下的），CI 则永远是冷启动。强制重建把两边拉到同一条起跑线。
+    """
+    try:
+        import intent_retriever as _ir
+        if getattr(_ir, "_RETRIEVER", None) is not None:
+            _ir._RETRIEVER.rebuild(force=True)
+    except Exception as exc:  # 重建失败不掩盖 gate 自身的判定
+        print(f"  [gate] 检索索引重建失败({exc})，继续用现有索引。")
+
+
+def load_baseline() -> Tuple[Optional[GateMetrics], Optional[GateThresholds]]:
+    if not BASELINE_PATH.exists():
+        return None, None
+    with open(BASELINE_PATH, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    return (
+        GateMetrics.from_dict(data.get("metrics", {})),
+        GateThresholds.from_dict(data.get("thresholds")),
+    )
+
+
+def save_baseline(metrics: GateMetrics,
+                  thresholds: Optional[GateThresholds] = None) -> Path:
+    thresholds = thresholds or GateThresholds()
+    payload = {
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "regression_set": str(REGRESSION_SET_PATH.relative_to(PROJECT_ROOT)),
+        "metrics": metrics.to_dict(),
+        "thresholds": thresholds.to_dict(),
+        "note": "由 regression_gate.py --update-baseline 生成，请勿手工编辑",
+    }
+    atomic_write_json(BASELINE_PATH, payload)
+    return BASELINE_PATH
+
+
+# ================================================================ gate 判定
+def check(metrics: GateMetrics, baseline: GateMetrics,
+          thresholds: GateThresholds, set_hash: str) -> GateResult:
+    reasons: List[str] = []
+
+    if metrics.sample_count < thresholds.min_samples:
+        reasons.append(
+            f"回归集样本不足：{metrics.sample_count} < {thresholds.min_samples}"
+        )
+
+    if baseline.set_hash and set_hash != baseline.set_hash:
+        reasons.append(
+            "固定回归集内容已被修改（sha256 不匹配基线）；"
+            "如确为有意扩充，请执行 python regression_gate.py --update-baseline"
+        )
+
+    delta = metrics.overall_accuracy - baseline.overall_accuracy
+    if delta < -thresholds.tolerance:
+        reasons.append(
+            f"overall 准确率回退 {abs(delta):.4f} > 容忍 {thresholds.tolerance:.4f} "
+            f"(baseline={baseline.overall_accuracy:.4f}, now={metrics.overall_accuracy:.4f})"
+        )
+
+    macro_delta = metrics.macro_accuracy - baseline.macro_accuracy
+    if macro_delta < -thresholds.macro_tolerance:
+        reasons.append(
+            f"macro 准确率回退 {abs(macro_delta):.4f} > 容忍 {thresholds.macro_tolerance:.4f} "
+            f"(baseline={baseline.macro_accuracy:.4f}, now={metrics.macro_accuracy:.4f})"
+        )
+
+    for intent, bucket in sorted(metrics.per_intent.items()):
+        base_bucket = baseline.per_intent.get(intent)
+        acc = float(bucket.get("accuracy", 0.0))
+        total = int(bucket.get("total", 0))
+
+        if total < thresholds.min_intent_samples:
+            reasons.append(
+                f"类别 {intent} 样本不足：{total} < {thresholds.min_intent_samples}"
+            )
+            continue
+
+        # 绝对兜底下限：恒定生效，拦住「类几乎全错」
+        if acc < thresholds.min_per_intent_accuracy_hard:
+            reasons.append(
+                f"类别 {intent} 准确率 {acc:.4f} 低于绝对下限 "
+                f"{thresholds.min_per_intent_accuracy_hard:.4f}"
+            )
+            continue
+
+        if base_bucket is None:
+            # 新增类别（基线里没有）：只要求达到绝对下限
+            continue
+
+        base_acc = float(base_bucket.get("accuracy", 0.0))
+        if acc < base_acc - thresholds.tolerance:
+            reasons.append(
+                f"类别 {intent} 准确率回退 {base_acc - acc:.4f} > 容忍 "
+                f"{thresholds.tolerance:.4f} (baseline={base_acc:.4f}, now={acc:.4f})"
+            )
+            continue
+
+        # 相对下限：仅当基线自身达标时才要求本次同样达标。
+        # 基线本身就低于该下限的类属于「已知欠账」，只要求不再回退。
+        if (base_acc >= thresholds.min_per_intent_accuracy
+                and acc < thresholds.min_per_intent_accuracy):
+            reasons.append(
+                f"类别 {intent} 准确率 {acc:.4f} 低于下限 "
+                f"{thresholds.min_per_intent_accuracy:.4f}"
+            )
+
+    return GateResult(
+        passed=not reasons,
+        reasons=reasons,
+        metrics=metrics,
+        baseline=baseline,
+        thresholds=thresholds,
+    )
+
+
+def run_gate(update_baseline: bool = False,
+             rebuild_set: bool = False,
+             agent=None) -> GateResult:
+    """执行 gate。``update_baseline=True`` 时跑完直接固化为新基线并返回通过。"""
+    try:
+        samples, set_hash = ensure_regression_set(force_rebuild=rebuild_set)
+    except Exception as exc:
+        return GateResult(passed=False, error=f"构建固定回归集失败: {exc}")
+
+    if not samples:
+        return GateResult(passed=False, error="固定回归集为空")
+
+    if agent is None:
+        try:
+            # 先固定种子再建 AgentRL：无 checkpoint 时网络是随机初始化的
+            seed_everything(0)
+            from agent_rl import AgentRL
+            agent = AgentRL(marl_vote=False)
+        except Exception as exc:
+            return GateResult(passed=False, error=f"加载 AgentRL 失败: {exc}")
+
+    # gate 必须与本地缓存状态无关：检索索引强制从语料现场重建，
+    # 否则「本地命中旧缓存」和「CI 冷启动重建」会给出不同的逐条预测。
+    _reset_retriever()
+
+    try:
+        metrics = evaluate_set(agent, samples)
+    except Exception as exc:
+        return GateResult(passed=False, error=f"评估执行失败: {exc}")
+    metrics.set_hash = set_hash
+
+    baseline, thresholds = load_baseline()
+    thresholds = thresholds or GateThresholds()
+
+    if update_baseline:
+        save_baseline(metrics, thresholds)
+        return GateResult(passed=True, metrics=metrics,
+                          baseline=metrics, thresholds=thresholds)
+
+    if baseline is None:
+        return GateResult(
+            passed=False, metrics=metrics, thresholds=thresholds,
+            error="缺少基线文件（eval/regression/baseline.json）；"
+                  "首次运行请执行 python regression_gate.py --update-baseline",
+        )
+
+    return check(metrics, baseline, thresholds, set_hash)
+
+
+# ================================================================ CLI
+def _format_report(result: GateResult) -> str:
+    lines: List[str] = []
+    lines.append("=" * 64)
+    lines.append("回归 gate (regression gate)")
+    lines.append("=" * 64)
+    if result.error:
+        lines.append(f"[ERROR] {result.error}")
+    if result.metrics:
+        m = result.metrics
+        lines.append(f"当前  overall={m.overall_accuracy:.4f}  "
+                     f"macro={m.macro_accuracy:.4f}  n={m.sample_count}")
+        floor = (result.thresholds.min_per_intent_accuracy_hard
+                 if result.thresholds else 0.0)
+        for intent, b in sorted(m.per_intent.items()):
+            mark = "OK " if b["accuracy"] >= floor else "LOW"
+            lines.append(f"   [{mark}] {intent:<16} {b['accuracy']:.4f}  "
+                         f"({b['correct']}/{b['total']})")
+    if result.baseline:
+        b = result.baseline
+        lines.append(f"基线  overall={b.overall_accuracy:.4f}  "
+                     f"macro={b.macro_accuracy:.4f}  n={b.sample_count}")
+    if result.reasons:
+        lines.append("-" * 64)
+        for reason in result.reasons:
+            lines.append(f"[FAIL] {reason}")
+    lines.append("-" * 64)
+    lines.append("PASS" if result.passed else "FAIL")
+    return "\n".join(lines)
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="回归 gate：固定回归集 + 基线 + 阈值，未通过则非 0 退出"
+    )
+    parser.add_argument("--update-baseline", action="store_true",
+                        help="跑一遍并把当前指标固化为新基线")
+    parser.add_argument("--rebuild-set", action="store_true",
+                        help="重建固定回归集（会改变内容哈希）")
+    parser.add_argument("--json", action="store_true", dest="as_json",
+                        help="输出 JSON 报告")
+    parser.add_argument("--quiet", action="store_true", help="只输出结论")
+    args = parser.parse_args(argv)
+
+    try:
+        result = run_gate(update_baseline=args.update_baseline,
+                          rebuild_set=args.rebuild_set)
+    except KeyboardInterrupt:
+        return EXIT_ERROR
+
+    if args.as_json:
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    elif args.quiet:
+        print("PASS" if result.passed else "FAIL")
+    else:
+        print(_format_report(result))
+
+    if result.error and not result.metrics:
+        return EXIT_ERROR
+    return EXIT_PASS if result.passed else EXIT_FAIL
+
+
+if __name__ == "__main__":
+    sys.exit(main())

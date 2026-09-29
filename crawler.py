@@ -70,8 +70,8 @@ def _save(text, url, out_dir, sub=""):
     slug = re.sub(r'[^\w\u4e00-\u9fff-]', '_', urllib.parse.urlparse(url).path).strip("_")[:50]
     d = os.path.join(out_dir, sub) if sub else out_dir
     os.makedirs(d, exist_ok=True)
-    with open(os.path.join(d, f"{slug}_{h}.txt"), "w", encoding="utf-8") as f:
-        f.write(f"# Source: {url}\n\n{text}")
+    from atomic_io import atomic_write_text
+    atomic_write_text(os.path.join(d, f"{slug}_{h}.txt"), f"# Source: {url}\n\n{text}")
     return True
 
 

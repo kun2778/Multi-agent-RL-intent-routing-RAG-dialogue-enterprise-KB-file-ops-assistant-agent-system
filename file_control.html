@@ -188,6 +188,117 @@
 
   .timestamp { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
 
+  /* ---------- 反馈按钮 ---------- */
+  .feedback-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    opacity: 0;
+    transition: opacity .2s;
+  }
+  .message.assistant:hover .feedback-bar { opacity: 1; }
+  .fb-btn {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    border-radius: 8px;
+    padding: 3px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all .15s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .fb-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .fb-btn.selected { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .fb-btn.selected.neg { background: var(--danger); border-color: var(--danger); }
+  .fb-label { font-size: 11px; color: var(--text-dim); }
+  .fb-hint { font-size: 11px; color: var(--text-dim); margin-left: auto; }
+
+  /* ---------- 反馈面板 ---------- */
+  .stats-panel {
+    display: none;
+    position: fixed;
+    right: 20px;
+    top: 60px;
+    width: 340px;
+    max-height: calc(100vh - 80px);
+    background: var(--sidebar);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow-y: auto;
+    z-index: 100;
+    padding: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.4);
+  }
+  .stats-panel.open { display: block; }
+  .stats-panel h3 {
+    font-size: 14px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .stats-panel .close-btn {
+    background: none; border: none; color: var(--text-dim);
+    cursor: pointer; font-size: 16px;
+  }
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .stat-row .label { color: var(--text-dim); }
+  .stat-bar {
+    height: 6px;
+    background: var(--bg-soft);
+    border-radius: 3px;
+    margin: 4px 0 8px;
+    overflow: hidden;
+  }
+  .stat-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width .3s;
+  }
+  .stat-section { margin-top: 14px; }
+  .stat-section-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+  .stats-toggle {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(79,156,255,.3);
+    z-index: 99;
+  }
+  .stats-toggle:hover { opacity: .9; }
+  .failure-list { max-height: 300px; overflow-y: auto; }
+  .failure-item {
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+  .failure-item .f-query { color: var(--text); margin-bottom: 4px; }
+  .failure-item .f-type { color: var(--danger); font-weight: 600; }
+  .failure-item .f-cause { color: var(--text-dim); margin-top: 2px; }
+
   /* ---------- 输入区 ---------- */
   .input-area {
     padding: 12px 20px 20px;
@@ -282,6 +393,12 @@
 const API_BASE = location.protocol.startsWith('http')
   ? ''                       // 由服务端托管(同源, 免 CORS)
   : 'http://127.0.0.1:5000'; // 直接双击打开 HTML 时走绝对地址
+
+// 初始化统计面板
+document.addEventListener('DOMContentLoaded', function() {
+  document.body.insertAdjacentHTML('beforeend', statsPanelHTML());
+  document.body.insertAdjacentHTML('beforeend', '<button class="stats-toggle" onclick="toggleStats()" title="持续学习统计">📊</button>');
+});
 
 let currentId = localStorage.getItem('agentrl_active_conv') || null;
 let busy = false;
@@ -391,7 +508,17 @@ function toggleThinking(el) {
   el.parentElement.classList.toggle('open');
 }
 
-function messageHTML(role, content, thinking, ts) {
+function feedbackBarHTML(traceId) {
+  if (!traceId) return '';
+  return '<div class="feedback-bar" data-trace="' + esc(traceId) + '">' +
+    '<span class="fb-label">回答有帮助？</span>' +
+    '<button class="fb-btn fb-pos" onclick="sendFeedback(this, \'positive\')" title="有帮助">👍 T</button>' +
+    '<button class="fb-btn fb-neg" onclick="sendFeedback(this, \'negative\')" title="无帮助">👎 F</button>' +
+    '<span class="fb-hint"></span>' +
+  '</div>';
+}
+
+function messageHTML(role, content, thinking, ts, traceId) {
   const time = ts ? '<div class="timestamp">' + esc(ts) + '</div>' : '';
   if (role === 'user') {
     return '<div class="message user"><div class="bubble">' + esc(content) + '</div>' + time + '</div>';
@@ -399,18 +526,19 @@ function messageHTML(role, content, thinking, ts) {
   return '<div class="message assistant">' +
     thinkingHTML(thinking) +
     '<div class="bubble">' + esc(content) + '</div>' + time +
+    feedbackBarHTML(traceId) +
   '</div>';
 }
 
 function renderMessages(messages) {
   $('messages').innerHTML = messages.map(m =>
-    messageHTML(m.role, m.content, m.thinking, m.timestamp)).join('');
+    messageHTML(m.role, m.content, m.thinking, m.timestamp, m.trace_id)).join('');
   scrollBottom();
 }
 
 function appendMessage(message) {
   const div = document.createElement('div');
-  div.innerHTML = messageHTML(message.role, message.content, message.thinking || [], message.timestamp);
+  div.innerHTML = messageHTML(message.role, message.content, message.thinking || [], message.timestamp, message.trace_id || '');
   $('messages').appendChild(div.firstChild);
   scrollBottom();
 }
@@ -465,6 +593,7 @@ async function sendMessage() {
       content: data.reply,
       thinking: data.thinking || [],
       timestamp: new Date().toLocaleString('zh-CN'),
+      trace_id: data.trace_id || '',
     });
     $('header-title').textContent = data.title ? '💬 ' + data.title : '对话';
     refreshConversations();
@@ -491,6 +620,116 @@ $('msg-input').addEventListener('input', autoResize);
 $('msg-input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
+
+/* ---------------- 反馈系统 ---------------- */
+async function sendFeedback(btn, feedback) {
+  const bar = btn.closest('.feedback-bar');
+  const traceId = bar.dataset.trace;
+  if (!traceId) return;
+
+  // 切换按钮状态
+  bar.querySelectorAll('.fb-btn').forEach(b => b.classList.remove('selected', 'neg'));
+  btn.classList.add('selected');
+  if (feedback === 'negative') btn.classList.add('neg');
+
+  const hint = bar.querySelector('.fb-hint');
+  hint.textContent = feedback === 'positive' ? '已标记有帮助 ✓' : '已标记无帮助，感谢反馈';
+
+  try {
+    await api('/api/feedback', {
+      method: 'POST',
+      body: JSON.stringify({ trace_id: traceId, feedback: feedback }),
+    });
+  } catch (e) {
+    hint.textContent = '提交失败';
+    console.error(e);
+  }
+}
+
+/* ---------------- 反馈统计面板 ---------------- */
+function statsPanelHTML() {
+  return '<div class="stats-panel" id="stats-panel">' +
+    '<h3>📊 持续学习统计 <button class="close-btn" onclick="toggleStats()">×</button></h3>' +
+    '<div id="stats-content"><div style="color:var(--text-dim);font-size:12px">加载中…</div></div>' +
+  '</div>';
+}
+
+async function toggleStats() {
+  const panel = $('stats-panel');
+  const isOpen = panel.classList.toggle('open');
+  if (isOpen) {
+    await loadStats();
+  }
+}
+
+async function loadStats() {
+  try {
+    const stats = await api('/api/learning/stats');
+    const failures = await api('/api/learning/failures?limit=20');
+    renderStats(stats, failures.failures || []);
+  } catch (e) {
+    $('stats-content').innerHTML = '<div style="color:var(--danger);font-size:12px">加载失败: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderStats(stats, failures) {
+  const total = stats.total_traces || 0;
+  const failCount = stats.total_failures || 0;
+  const failRate = total > 0 ? (failCount / total * 100).toFixed(1) : '0.0';
+  const byType = stats.by_type || {};
+
+  let html = '<div class="stat-section">' +
+    '<div class="stat-section-title">总体</div>' +
+    '<div class="stat-row"><span class="label">总 Trace</span><span>' + total + '</span></div>' +
+    '<div class="stat-row"><span class="label">失败案例</span><span>' + failCount + '</span></div>' +
+    '<div class="stat-row"><span class="label">失败率</span><span>' + failRate + '%</span></div>' +
+  '</div>';
+
+  if (Object.keys(byType).length > 0) {
+    html += '<div class="stat-section"><div class="stat-section-title">失败归因分布</div>';
+    const maxVal = Math.max(...Object.values(byType), 1);
+    for (const [type, count] of Object.entries(byType)) {
+      const pct = (count / maxVal * 100).toFixed(0);
+      const label = ({
+        intent_classification_error: '意图分类错',
+        route_error: '路由错',
+        retrieval_error: '检索错',
+        generation_error: '生成错',
+        strategy_error: '策略错',
+        clarification_error: '澄清错',
+        operation_error: '操作错',
+        unknown: '未知',
+      })[type] || type;
+      html += '<div class="stat-row"><span class="label">' + label + '</span><span>' + count + '</span></div>' +
+        '<div class="stat-bar"><div class="stat-bar-fill" style="width:' + pct + '%"></div></div>';
+    }
+    html += '</div>';
+  }
+
+  if (failures.length > 0) {
+    html += '<div class="stat-section"><div class="stat-section-title">最近失败案例</div><div class="failure-list">';
+    for (const f of failures.slice(0, 10)) {
+      const typeName = ({
+        intent_classification_error: '意图分类错',
+        route_error: '路由错',
+        retrieval_error: '检索错',
+        generation_error: '生成错',
+        strategy_error: '策略错',
+        clarification_error: '澄清错',
+        operation_error: '操作错',
+        unknown: '未知',
+      })[f.attribution?.primary_failure] || '未知';
+      html += '<div class="failure-item">' +
+        '<div class="f-query">' + esc(f.user_query || '') + '</div>' +
+        '<div class="f-type">' + typeName + '</div>' +
+        '<div class="f-cause">' + esc(f.attribution?.root_cause || '') + '</div>' +
+      '</div>';
+    }
+    html += '</div></div>';
+  }
+
+  $('stats-content').innerHTML = html;
+}
 
 /* ---------------- 启动 ---------------- */
 (async function init() {

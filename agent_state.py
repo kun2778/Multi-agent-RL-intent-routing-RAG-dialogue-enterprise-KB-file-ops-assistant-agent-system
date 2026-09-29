@@ -4,6 +4,8 @@ from enum import Enum
 import time
 import numpy as np
 
+from rl_config import get_max_rounds, get_retrieval_budget
+
 
 class IntentType(Enum):
     """更大的操作意图标签集合 —— RL 动作空间。"""
@@ -14,6 +16,10 @@ class IntentType(Enum):
     QUERY = "query"                # 事实查询（单轮向量检索）
     DEEP_SEARCH = "deep_search"    # 分析/对比/综合（多轮深度检索）
     VAGUE = "vague"                # 模糊/不完整（主动澄清闭环）
+    FILE_ANALYSIS = "file_analysis"  # 文件深度分析（只读）
+    FILE_SCAN = "file_scan"          # 文件扫描（只读）
+    REPORT_GENERATE = "report_generate"  # 生成审查报告
+    FILENAME_QUERY = "filename_query"    # 按名称搜索文件（时间筛选）
 
 
 class QuerySubIntent(Enum):
@@ -27,6 +33,9 @@ class QuerySubIntent(Enum):
     QUERY_SEARCH = "query_search"          # 搜索文件/信息
     QUERY_SYSTEM = "query_system"          # 查找系统文件/程序
     QUERY_OTHER = "query_other"            # 其他查询
+    QUERY_FILE_SCAN = "query_file_scan"          # 文件扫描
+    QUERY_FILE_ANALYZE = "query_file_analyze"    # 文件分析
+    QUERY_READONLY_REPORT = "query_readonly_report"  # 只读报告
 
 
 class SlotType(Enum):
@@ -39,6 +48,10 @@ class SlotType(Enum):
     FORMAT = "format"              # 输出格式
     TIME_RANGE = "time_range"      # 时间范围
     IMAGE_PATH = "image_path"      # 图片路径
+    READONLY_MODE = "readonly_mode"    # 只读模式标记
+    EXCLUDE_DIRS = "exclude_dirs"      # 排除目录
+    IGNORE_FILES = "ignore_files"      # 忽略文件
+    OUTPUT_FORMAT = "output_format"    # 输出格式（Markdown/JSON/CSV）
 
 
 class RoutingPath(Enum):
@@ -59,6 +72,14 @@ class RoutingPath(Enum):
     QUERY_EXTRACT = "query_extract"
     QUERY_SEARCH = "query_search"
     QUERY_SYSTEM = "query_system"
+    # 新增路由路径
+    FILE_SCAN = "file_scan"
+    FILE_ANALYSIS = "file_analysis"
+    REPORT_GENERATE = "report_generate"
+    QUERY_FILE_SCAN = "query_file_scan"
+    QUERY_FILE_ANALYZE = "query_file_analyze"
+    QUERY_READONLY_REPORT = "query_readonly_report"
+    FILENAME_QUERY = "filename_query"
 
 
 SHORT_LABELS = {
@@ -69,6 +90,10 @@ SHORT_LABELS = {
     IntentType.QUERY: "事实查询",
     IntentType.DEEP_SEARCH: "深度检索",
     IntentType.VAGUE: "澄清",
+    IntentType.FILE_ANALYSIS: "文件分析",
+    IntentType.FILE_SCAN: "文件扫描",
+    IntentType.REPORT_GENERATE: "报告生成",
+    IntentType.FILENAME_QUERY: "文件名搜索",
 }
 
 QUERY_SUBINTENT_LABELS = {
@@ -81,6 +106,9 @@ QUERY_SUBINTENT_LABELS = {
     QuerySubIntent.QUERY_SEARCH: "搜索信息",
     QuerySubIntent.QUERY_SYSTEM: "系统查找",
     QuerySubIntent.QUERY_OTHER: "其他查询",
+    QuerySubIntent.QUERY_FILE_SCAN: "文件扫描",
+    QuerySubIntent.QUERY_FILE_ANALYZE: "文件分析",
+    QuerySubIntent.QUERY_READONLY_REPORT: "只读报告",
 }
 
 
@@ -133,14 +161,17 @@ class AgentState:
 
     dialog_history: List[DialogHistory] = field(default_factory=list)
     current_round: int = 0
-    max_rounds: int = 6
-    retrieval_budget: float = 300.0
+    # config/app.yaml rl: 段覆盖（缺失时回退代码默认值）
+    max_rounds: int = field(default_factory=get_max_rounds)
+    retrieval_budget: float = field(default_factory=get_retrieval_budget)
     time_started: float = field(default_factory=time.time)
     current_intent: Optional[IntentType] = None
     current_sub_intent: Optional[QuerySubIntent] = None
     routing_path: Optional[RoutingPath] = None
     evidence: List[RetrievalResult] = field(default_factory=list)
     clarifications: List[str] = field(default_factory=list)
+    # 已解决的澄清轮数：奖励衰减与期望决策的深度 k（k = clarification_rounds + 1）
+    clarification_rounds: int = 0
     query_rewrite_history: List[str] = field(default_factory=list)
     is_terminated: bool = False
     final_answer: Optional[str] = None
@@ -248,6 +279,7 @@ class AgentState:
             routing_path=self.routing_path,
             evidence=[e for e in self.evidence],
             clarifications=[c for c in self.clarifications],
+            clarification_rounds=self.clarification_rounds,
             query_rewrite_history=[q for q in self.query_rewrite_history],
             is_terminated=self.is_terminated,
             final_answer=self.final_answer,

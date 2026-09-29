@@ -14,6 +14,7 @@ import sys
 sys.stdout.reconfigure(encoding="utf-8")
 
 from faiss_store import FaissVectorStore
+from embedding import create_embedder
 from runtime_paths import WORKSPACE_DIR, FAISS_DIR
 
 
@@ -56,13 +57,18 @@ def main():
     parser.add_argument("--chunk-size", type=int, default=500, help="块大小")
     parser.add_argument("--overlap", type=int, default=75, help="重叠字符数")
     parser.add_argument("--stats", action="store_true", help="仅显示统计")
+    parser.add_argument("--embedder", default="auto", help="嵌入器后端 (auto/sentence_transformers/tfidf)")
+    parser.add_argument("--model", default="BAAI/bge-small-zh-v1.5", help="sentence-transformers 模型名")
     args = parser.parse_args()
 
     persist = args.persist or str(FAISS_DIR)
     source = args.source or str(WORKSPACE_DIR / "corpus")
 
+    embedder = create_embedder(backend=args.embedder, model_name=args.model)
+    print(f"Using embedder: {type(embedder).__name__} (dimension={embedder.dimension})")
+
     store = FaissVectorStore(
-        dimension=128,
+        dimension=embedder.dimension,
         chunk_size=args.chunk_size,
         chunk_overlap=args.overlap,
         persist_dir=persist,

@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding='utf-8')
@@ -10,6 +11,7 @@ from marl_agent import MetaAgent
 from router import Router
 from answer_generator import AnswerGenerator
 from file_corpus import FileCorpus
+from continuous_learning import get_learning_engine
 
 
 class AgentRLSystem:
@@ -42,6 +44,25 @@ class AgentRLSystem:
         self.generator = AnswerGenerator()
         self.agent_rl = self.router.agent_rl
         self.agent_type = agent_type
+        self.learning_engine = get_learning_engine()
+        self._replay_ingest()
+
+    def _replay_ingest(self):
+        """启动时把线上 bad case 脱敏后回流进 replay buffer。
+
+        失败已由 continuous_learning 落盘到 learning/failures/；
+        这里补一次回流（幂等，已回流过的按 sha1 记账跳过）。
+        回流失败只打日志，绝不阻塞系统启动。
+        """
+        try:
+            from badcase_replay import push_bad_cases
+            pushed, skipped = push_bad_cases(self.agent_rl)
+        except Exception as exc:
+            print(f"  [回流] bad case 回流失败（不影响启动）: {exc}")
+            return
+        if pushed:
+            print(f"  [回流] bad case → replay buffer: +{pushed} 条 "
+                  f"(跳过 {skipped}，buffer={len(self.agent_rl.replay_buffer)})")
 
     def process_query(self, query: str) -> str:
         """处理单条对话框输入，返回最终结果字符串。"""
@@ -49,13 +70,11 @@ class AgentRLSystem:
         if not query:
             return ""
 
+        start_time = time.time()
+
         state = AgentState()
         state.corpus_size = len(self.corpus.registry)
         state.add_dialog(query, "")
-
-        print(f"\n{'#'*70}")
-        print(f"  [用户输入] {query}")
-        print(f"{'#'*70}")
 
         state = self.router.route(state)
 
@@ -70,13 +89,122 @@ class AgentRLSystem:
 
         answer = self.generator.generate(state)
         state.final_answer = state.final_answer or answer
+
+        latency_ms = (time.time() - start_time) * 1000
+
+        # 记录 Trace
+        retrieval_docs = []
+        retrieval_scores = []
+        for ev in state.evidence:
+            for d in ev.documents:
+                retrieval_docs.append(d.get("path", ""))
+            if ev.score:
+                retrieval_scores.append(ev.score)
+
+        thinking = self._build_thinking(state)
+        trace_id = self.learning_engine.record_trace(
+            user_query=query,
+            answer=answer,
+            intent=state.current_intent.value if state.current_intent else "",
+            route=state.routing_path.value if state.routing_path else "",
+            thinking=thinking,
+            clarifications=list(state.clarifications or []),
+            retrieval_docs=retrieval_docs,
+            retrieval_scores=retrieval_scores,
+            latency_ms=round(latency_ms, 2),
+        )
+        self.learning_engine.increment_trace_count()
+
         print("\n" + "=" * 62)
         print("  [结果]")
         print("=" * 62)
         print(answer)
         print("\n" + state.summary())
+        print(f"\n  [Trace ID] {trace_id}")
+
+        # 收集用户反馈
+        self._collect_feedback(trace_id)
+
         self.corpus._save_registry()
         return answer
+
+    def _build_thinking(self, state: AgentState) -> list:
+        """从 state 构建 thinking steps 列表。"""
+        from agent_state import IntentType, SHORT_LABELS
+        steps = []
+        if state.current_intent is not None:
+            label = SHORT_LABELS.get(state.current_intent, state.current_intent.value)
+            path = state.routing_path.value if state.routing_path else "N/A"
+            steps.append({
+                "title": "意图识别",
+                "detail": f"用户请求被分为【{label}】类 ({state.current_intent.value})",
+                "extra": f"路由路径 {path}",
+            })
+        for ev in state.operation_history:
+            steps.append({
+                "title": "文件操作",
+                "detail": f"操作: {ev.kind} 文件「{ev.target or '（未指定）'}」",
+                "extra": f"结果[{'成功' if ev.success else '失败'}]: {ev.message}",
+            })
+        for r in state.evidence:
+            files = [d.get("path") for d in r.documents if d.get("path")]
+            steps.append({
+                "title": "文档检索",
+                "detail": f"第 {r.round_num} 轮向量检索命中 {len(files)} 个文件",
+                "extra": "、".join(files) if files else "无命中文档",
+            })
+        if state.clarifications:
+            steps.append({
+                "title": "主动澄清",
+                "detail": "指令存在歧义，需要用户补充信息后才能继续",
+                "extra": "；".join(state.clarifications),
+            })
+        if not steps:
+            steps.append({"title": "已接收", "detail": "请求已处理完成", "extra": ""})
+        return steps
+
+    def _collect_feedback(self, trace_id: str):
+        """命令行交互：收集用户 T/F 反馈。"""
+        try:
+            feedback_input = input("\n  这个回答有帮助吗？(T=有帮助 / F=无帮助 / 回车跳过): ").strip().lower()
+            if feedback_input == 't':
+                self.learning_engine.update_feedback(trace_id, "positive")
+                print("  ✓ 已记录为「有帮助」")
+            elif feedback_input == 'f':
+                self.learning_engine.update_feedback(trace_id, "negative")
+                print("  ✓ 已记录为「无帮助」，感谢反馈！")
+
+                # 进一步归因
+                print("  失败类型：")
+                print("    1. 意图分类错  2. 路由错  3. 检索错")
+                print("    4. 生成错  5. 策略错  6. 澄清错  7. 操作错  8. 跳过")
+                type_input = input("  请选择 (1-8): ").strip()
+                type_map = {
+                    "1": "intent_classification_error",
+                    "2": "route_error",
+                    "3": "retrieval_error",
+                    "4": "generation_error",
+                    "5": "strategy_error",
+                    "6": "clarification_error",
+                    "7": "operation_error",
+                }
+                if type_input in type_map:
+                    from continuous_learning import TRACES_DIR
+                    trace_path = TRACES_DIR / f"{trace_id}.json"
+                    if trace_path.exists():
+                        import json
+                        with open(trace_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        data["human_label"] = {
+                            "failure_type": type_map[type_input],
+                            "notes": "命令行用户标注",
+                        }
+                        from atomic_io import atomic_write_json
+                        atomic_write_json(trace_path, data)
+                        print(f"  ✓ 已记录失败类型: {type_map[type_input]}")
+            # feedback_input == '' -> 跳过
+        except (EOFError, KeyboardInterrupt):
+            pass
 
     # ------------------------------------------------------------- 交互循环
     def interactive(self):
@@ -117,7 +245,7 @@ class AgentRLSystem:
     def _is_command(self, raw: str) -> bool:
         for prefix in ("帮助", "help", "列出", "list", "ls", "查看", "view", "cat",
                        "训练", "train", "演示", "demo", "状态", "status", "语料",
-                       "切换", "switch", "比较", "compare"):
+                       "切换", "switch", "比较", "compare", "学习报告", "learn"):
             if raw.startswith(prefix) or raw.lower().startswith(prefix.lower()):
                 return True
         return False
@@ -141,6 +269,8 @@ class AgentRLSystem:
             self._switch_agent(raw)
         elif lower.startswith("比较") or lower.startswith("compare"):
             self._compare_agents(raw)
+        elif lower.startswith("学习报告") or lower.startswith("learn"):
+            self._print_learning_report()
         else:
             self._print_help()
 
@@ -274,13 +404,70 @@ class AgentRLSystem:
 命令:
   help/帮助      列出/列表/list    查看/view <文件>
   训练/train     演示/demo         状态/status
-  切换/switch    比较/compare      退出/exit
+  切换/switch    比较/compare      学习报告/learn
+  退出/exit
 
 Agent架构:
   切换 single    → 单Agent架构（原版）
   切换 marl      → 多Agent协作架构（推荐，更准确）
   比较 <查询>    → 对比两种架构的预测结果
+
+持续学习:
+  每次回答后输入 T/F 标记反馈
+  输入「学习报告」查看失败统计和归因分布
 """)
+
+    def _print_learning_report(self):
+        """打印持续学习统计报告。"""
+        engine = self.learning_engine
+        stats = engine.get_stats()
+        failures = engine.get_failure_cases(limit=100)
+        versions = engine.list_versions()
+
+        print("\n" + "=" * 60)
+        print("  持续学习报告")
+        print("=" * 60)
+
+        total = stats.get("total_traces", 0)
+        fail_count = stats.get("total_failures", 0)
+        fail_rate = (fail_count / total * 100) if total > 0 else 0
+        print(f"  总 Trace 数: {total}")
+        print(f"  失败案例数: {fail_count}")
+        print(f"  失败率: {fail_rate:.1f}%")
+
+        by_type = stats.get("by_type", {})
+        if by_type:
+            print(f"\n  失败归因分布:")
+            type_labels = {
+                "intent_classification_error": "意图分类错",
+                "route_error": "路由错",
+                "retrieval_error": "检索错",
+                "generation_error": "生成错",
+                "strategy_error": "策略错",
+                "clarification_error": "澄清错",
+                "operation_error": "操作错",
+                "unknown": "未知",
+            }
+            for ftype, count in sorted(by_type.items(), key=lambda x: -x[1]):
+                label = type_labels.get(ftype, ftype)
+                bar = "█" * min(count, 30)
+                print(f"    {label:8s}  {count:3d}  {bar}")
+
+        if versions:
+            print(f"\n  版本历史: {len(versions)} 个")
+            for v in versions[-3:]:
+                print(f"    {v['version_id']}  [{v['status']}]")
+
+        if failures:
+            print(f"\n  最近失败案例 (共 {len(failures)} 个):")
+            for f in failures[:5]:
+                query = f.get("user_query", "")[:40]
+                attr = f.get("attribution", {})
+                ftype = type_labels.get(attr.get("primary_failure", ""), "未知")
+                cause = attr.get("root_cause", "")[:30]
+                print(f"    • [{ftype}] {query}... → {cause}")
+
+        print("=" * 60)
 
     def _run_demo(self):
         self.agent_rl.train_episode(num_episodes=3)

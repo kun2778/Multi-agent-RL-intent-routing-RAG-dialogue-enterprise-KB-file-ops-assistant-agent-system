@@ -3499,3 +3499,23 @@ mmm,vague
 查一下 部署脚本内容 的定义,query
 生成报告文件 requirements.txt,add_file
 怎么减肥,vague
+为我找到最近添加的文件名,filename_query
+最近修改的文件有哪些,filename_query
+查找最近创建的文件,filename_query
+最近编辑过的文件名,filename_query
+最新添加的文件有哪些,filename_query
+最近保存的文件名列表,filename_query
+搜索最近的txt文件,filename_query
+最近修改的py文件有哪些,filename_query
+找到本周创建的文件,filename_query
+最近一天修改的文件,filename_query
+recently modified files,filename_query
+find newly created files,filename_query
+最新的文件名有哪些,filename_query
+最近操作过的文件,filename_query
+帮我找最近的文件,filename_query
+最近新添加了什么文件,filename_query
+最近哪个文件被修改了,filename_query
+查找最近一个月创建的文件,filename_query
+最近使用的文档有哪些,filename_query
+最近下载的文件在哪里,filename_query

@@ -4,7 +4,7 @@ FAISS 向量存储模块：支持大块文本分片、持久化索引、约 5 �
 配置参数：
   - chunk_size: 500 字符
   - chunk_overlap: 75 字符（15% 重叠）
-  - dimension: 128（默认 TF-IDF）或自定义 embedding 维度
+  - dimension: 由 Embedder 自动决定（TF-IDF=128, bge-small-zh=512）
   - index_type: "flat" (IndexFlatIP) / "ivf" (IndexIVFFlat)
 """
 
@@ -23,6 +23,9 @@ try:
 except ImportError:
     FAISS_AVAILABLE = False
     print("[WARNING] faiss-cpu not installed. FaissVectorStore will use numpy fallback.")
+
+from embedding import create_embedder
+from atomic_io import atomic_write_json, decode_bytes, fsync_dir, open_read
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -51,7 +54,7 @@ class TextChunk:
 
 
 class TextChunker:
-    """文本分块器：按固定大小 + 重叠窗口切分。"""
+    """文本分块器：三级切分（段落 → 句子 → 语义边界）+ 重叠窗口。"""
 
     def __init__(self, chunk_size: int = 500, overlap: int = 75):
         """
@@ -62,14 +65,22 @@ class TextChunker:
         self.chunk_size = chunk_size
         self.overlap = overlap
 
+    # 第三级语义切割的语义连接词（在连接词前断开，保持语义完整）
+    _SEMANTIC_CONNECTIVES = (
+        r"但是|然而|因此|于是|此外|另外|同时|其中|例如|比如|也就是说|换言之|"
+        r"首先|其次|再次|最后|总之|综上|结论|并且|而且|不过|所以|因为|如果|"
+        r"即使|尽管|无论|随后|接着|反之|相反|then|however|therefore|moreover|"
+        r"furthermore|finally|in addition|for example|nevertheless"
+    )
+
     def chunk_text(self, text: str, source: str = "",
                    metadata: Optional[Dict] = None) -> List[TextChunk]:
         """将文本切分为多个块。
 
-        策略：
+        策略（三级切分）：
           1. 优先在段落边界（\\n\\n）切分
           2. 段落过长则在句子边界（.!?。！？）切分
-          3. 句子仍过长则按字符硬切
+          3. 句子仍过长则按语义边界切割（换行/结构 → 语义连接词 → 弱标点）
         """
         if not text or not text.strip():
             return []
@@ -126,7 +137,7 @@ class TextChunker:
 
     def _split_long_paragraph(self, text: str, source: str, start_idx: int,
                                start_offset: int, meta: Dict) -> List[TextChunk]:
-        """对超长段落按句子边界 → 硬切方式分块。"""
+        """对超长段落按句子边界 → 语义边界方式分块。"""
         chunks = []
         # 按句子分割
         sentences = re.split(r'(?<=[.!?。！？])\s*', text)
@@ -153,10 +164,12 @@ class TextChunker:
                 offset += len(buffer) - self.overlap
                 buffer = ""
 
-            # 句子本身超长 → 按字符硬切
+            # 句子本身超长 → 第三级：按语义边界切割（不再按字符硬切）
             if len(sent) > self.chunk_size:
-                for i in range(0, len(sent), self.chunk_size - self.overlap):
-                    piece = sent[i:i + self.chunk_size]
+                pieces = self._semantic_split(sent)
+                for piece in pieces:
+                    if not piece:
+                        continue
                     chunks.append(TextChunk(
                         text=piece, source=source, chunk_index=idx,
                         start_offset=offset, end_offset=offset + len(piece),
@@ -176,6 +189,77 @@ class TextChunker:
 
         return chunks
 
+    # ──────────── 第三级：语义切割 ────────────
+
+    def _semantic_split(self, text: str) -> List[str]:
+        """按语义边界把超长句子切成 <= chunk_size 的片段。
+
+        切点优先级：
+          1. 强边界：换行 / Markdown 结构（标题、列表、代码围栏）
+          2. 语义连接词（但是/因此/例如/finally...）之前
+          3. 弱标点：;；:：,，、 与空格
+          4. 兜底：窗口末端字符切（保证终止，避免死循环）
+        相邻片段保留 overlap 字符重叠。
+        """
+        if len(text) <= self.chunk_size:
+            return [text]
+
+        pieces: List[str] = []
+        start = 0
+        n = len(text)
+        while start < n:
+            if n - start <= self.chunk_size:
+                pieces.append(text[start:])
+                break
+            cut = self._find_semantic_cut(text, start)
+            if cut <= start:
+                cut = min(start + self.chunk_size, n)
+            pieces.append(text[start:cut])
+            next_start = cut - self.overlap
+            if next_start <= start:
+                next_start = cut
+            start = next_start
+        return [p for p in pieces if p]
+
+    def _find_semantic_cut(self, text: str, start: int) -> int:
+        """在 [start, start+chunk_size] 窗口内寻找最佳语义切点（取最靠后的候选）。"""
+        window_end = min(len(text), start + self.chunk_size)
+        if window_end >= len(text):
+            return len(text)
+        min_pos = start + max(1, int(self.chunk_size * 0.3))
+        window = text[start:window_end]
+
+        def latest_match(pattern: str, flags: int = 0,
+                         consume: bool = False) -> Optional[int]:
+            best = None
+            for m in re.finditer(pattern, window, flags):
+                pos = start + (m.end() if consume else m.start())
+                if pos >= min_pos and pos < window_end:
+                    best = pos
+            return best
+
+        # 1) 强边界：Markdown 结构行首（标题/列表/代码围栏）前的换行
+        cut = latest_match(r"\n(?=(?:#+\s|[-*]\s|\d+\.\s|```))")
+        if cut:
+            return cut
+        # 1b) 普通换行
+        cut = latest_match(r"\n")
+        if cut:
+            return cut
+
+        # 2) 语义连接词之前断开
+        cut = latest_match(r"(?=" + self._SEMANTIC_CONNECTIVES + r")")
+        if cut:
+            return cut
+
+        # 3) 弱标点 / 空格
+        cut = latest_match(r"[;；:：,，、\s]")
+        if cut:
+            return cut
+
+        # 4) 兜底：窗口末端
+        return window_end
+
     def chunk_documents(self, documents: Dict[str, str],
                         doc_metadata: Optional[Dict[str, Dict]] = None) -> List[TextChunk]:
         """批量切分多个文档。
@@ -190,65 +274,6 @@ class TextChunker:
             chunks = self.chunk_text(content, source=path, metadata=meta)
             all_chunks.extend(chunks)
         return all_chunks
-
-
-# ──────────────────────────────────────────────────────────────────────
-# 简易 TF-IDF 嵌入器（与现有 TfidfEmbedder 兼容）
-# ──────────────────────────────────────────────────────────────────────
-
-class SimpleTfidfEmbedder:
-    """轻量 TF-IDF 嵌入器，用于向量化文本块。"""
-
-    def __init__(self, dimension: int = 128):
-        self.dimension = dimension
-        self.vocab: Dict[str, int] = {}
-        self.idf: Dict[str, float] = {}
-        self.is_fitted = False
-
-    def _tokenize(self, text: str) -> List[str]:
-        tokens = re.findall(r'[A-Za-z0-9_]+', text.lower())
-        cjk = re.findall(r'[\u4e00-\u9fff]', text)
-        tokens.extend(cjk)
-        tokens.extend([''.join(cjk[i:i + 2]) for i in range(len(cjk) - 1)])
-        return tokens
-
-    def fit(self, texts: List[str]):
-        from collections import Counter
-        doc_counts = Counter()
-        all_tokens: List[str] = []
-        for text in texts:
-            tokens = self._tokenize(text)
-            all_tokens.extend(tokens)
-            for t in set(tokens):
-                doc_counts[t] += 1
-        total = max(len(texts), 1)
-        for token, count in doc_counts.items():
-            self.idf[token] = np.log((total + 1) / (count + 1)) + 1
-        self.vocab = {t: i for i, t in enumerate(set(all_tokens))}
-        self.is_fitted = True
-
-    def transform(self, text: str) -> np.ndarray:
-        if not self.is_fitted:
-            return np.random.randn(self.dimension).astype(np.float32)
-        tokens = self._tokenize(text)
-        vector = np.zeros(self.dimension, dtype=np.float32)
-        from collections import Counter
-        counts = Counter(tokens)
-        total = max(len(tokens), 1)
-        for token, count in counts.items():
-            if token in self.vocab:
-                idx = self.vocab[token] % self.dimension
-                vector[idx] = (count / total) * self.idf.get(token, 1.0)
-        norm = np.linalg.norm(vector)
-        if norm > 0:
-            vector = vector / norm
-        else:
-            vector = np.random.randn(self.dimension).astype(np.float32) * 0.01
-        return vector
-
-    def fit_transform(self, texts: List[str]) -> np.ndarray:
-        self.fit(texts)
-        return np.array([self.transform(t) for t in texts], dtype=np.float32)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -267,28 +292,36 @@ class FaissVectorStore:
 
     def __init__(
         self,
-        dimension: int = 128,
+        dimension: int = None,
         chunk_size: int = 500,
         chunk_overlap: int = 75,
         index_type: str = "flat",
         persist_dir: str = "faiss_store",
+        embedder_backend: str = "auto",
+        embedder_model: str = "BAAI/bge-small-zh-v1.5",
     ):
         """
         Args:
-            dimension: 向量维度
+            dimension: 向量维度（None 则由 Embedder 自动决定）
             chunk_size: 文本块大小（字符）
             chunk_overlap: 块间重叠字符
             index_type: "flat" (IndexFlatIP) 或 "ivf" (IndexIVFFlat, 需训练)
             persist_dir: 索引持久化目录
+            embedder_backend: "auto" | "sentence_transformers" | "tfidf"
+            embedder_model: sentence-transformers 模型名
         """
-        self.dimension = dimension
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.index_type = index_type
         self.persist_dir = os.path.abspath(persist_dir)
 
         self.chunker = TextChunker(chunk_size=chunk_size, overlap=chunk_overlap)
-        self.embedder = SimpleTfidfEmbedder(dimension=dimension)
+        self.embedder = create_embedder(
+            backend=embedder_backend,
+            model_name=embedder_model,
+            dimension=dimension,
+        )
+        self.dimension = self.embedder.dimension
 
         self.index: Optional[faiss.Index] = None if FAISS_AVAILABLE else None
         self.chunks: List[Dict] = []  # 存储块的元数据
@@ -373,20 +406,24 @@ class FaissVectorStore:
                 readable_exts = {
                     'txt', 'md', 'yaml', 'yml', 'py', 'json', 'xml', 'ini', 'cfg',
                     'env', 'csv', 'html', 'js', 'ts', 'c', 'cpp', 'h', 'java', 'go',
-                    'rs', 'sh', 'bat', 'ps1', 'sql', 'log', 'toml',
+                    'rs', 'sh', 'bat', 'ps1', 'sql', 'log', 'toml', 'pdf',
                 }
                 if ext not in readable_exts:
                     continue
-                try:
-                    with open(abs_path, 'rb') as f:
-                        raw = f.read()
-                    for enc in ("utf-8", "gbk", "gb18030", "latin-1"):
-                        try:
-                            text = raw.decode(enc)
+                # PDF 走专用解析模块
+                if ext == 'pdf':
+                    try:
+                        from pdf_parser import extract_pdf_text
+                        text = extract_pdf_text(abs_path)
+                        if text:
                             documents[rel_path] = text
-                            break
-                        except (UnicodeDecodeError, ValueError):
-                            continue
+                    except Exception:
+                        continue
+                    continue
+                try:
+                    with open_read(abs_path) as raw:
+                        text = decode_bytes(raw)
+                    documents[rel_path] = text
                 except OSError:
                     continue
 
@@ -527,26 +564,31 @@ class FaissVectorStore:
         store_dir = os.path.join(self.persist_dir, name)
         os.makedirs(store_dir, exist_ok=True)
 
-        # 保存 FAISS 索引
+        # 保存 FAISS 索引（先写临时文件再原子替换，避免读到半截索引）
         if FAISS_AVAILABLE and self.index is not None:
             index_path = os.path.join(store_dir, "index.faiss")
-            faiss.write_index(self.index, index_path)
+            tmp_index = index_path + ".tmp"
+            faiss.write_index(self.index, tmp_index)
+            os.replace(tmp_index, index_path)
+            fsync_dir(store_dir)
 
         # 保存元数据
         meta_path = os.path.join(store_dir, "chunks.json")
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump({
-                "chunks": self.chunks,
-                "config": {
-                    "dimension": self.dimension,
-                    "chunk_size": self.chunk_size,
-                    "chunk_overlap": self.chunk_overlap,
-                    "index_type": self.index_type,
-                },
-                "embedder_vocab": self.embedder.vocab,
-                "embedder_idf": self.embedder.idf,
-                "is_trained": self.is_trained,
-            }, f, ensure_ascii=False, indent=2)
+        meta = {
+            "chunks": self.chunks,
+            "config": {
+                "dimension": self.dimension,
+                "chunk_size": self.chunk_size,
+                "chunk_overlap": self.chunk_overlap,
+                "index_type": self.index_type,
+            },
+            "embedder_type": type(self.embedder).__name__,
+            "is_trained": self.is_trained,
+        }
+        if hasattr(self.embedder, "vocab"):
+            meta["embedder_vocab"] = self.embedder.vocab
+            meta["embedder_idf"] = self.embedder.idf
+        atomic_write_json(meta_path, meta)
 
         path = os.path.abspath(store_dir)
         print(f"[FaissVectorStore] 已保存到: {path} ({len(self.chunks)} 块)")
@@ -567,9 +609,10 @@ class FaissVectorStore:
             data = json.load(f)
         self.chunks = data["chunks"]
         self.is_trained = data.get("is_trained", False)
-        self.embedder.vocab = data.get("embedder_vocab", {})
-        self.embedder.idf = data.get("embedder_idf", {})
-        self.embedder.is_fitted = bool(self.embedder.vocab)
+        if hasattr(self.embedder, "vocab"):
+            self.embedder.vocab = data.get("embedder_vocab", {})
+            self.embedder.idf = data.get("embedder_idf", {})
+            self.embedder.is_fitted = bool(self.embedder.vocab)
 
         # 加载 FAISS 索引
         if FAISS_AVAILABLE and os.path.exists(index_path):

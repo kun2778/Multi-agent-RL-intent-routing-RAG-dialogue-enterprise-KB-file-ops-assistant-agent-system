@@ -1,5 +1,6 @@
 from typing import Tuple, List, Optional
 from agent_state import AgentState, IntentType, RoutingPath
+from rl_config import get_max_rounds, get_time_threshold
 
 
 OP_INTENTS = {
@@ -13,7 +14,8 @@ class TerminationPolicy:
 
     终止条件由三部分构成：
       1. 任务完成   ：文件操作已提交成功，或检索证据充分（子查询全部覆盖且无矛盾）
-      2. 资源预算   ：检索轮次达到上限 / 时间超过预算 -> 强制终止（奖励键 timeout）
+      2. 资源预算   ：检索轮次达到上限 / 时间超过预算 -> 强制终止（奖励键 timeout）；
+                     上限 max_rounds 与时间预算来自 config/app.yaml 的 rl: 段
       3. 澄清闭环   ：VAGUE 意图不终止，要求用户补充信息后重新路由
 
     check(state, reward_hint=None) 返回:
@@ -21,9 +23,17 @@ class TerminationPolicy:
     reward_hint 可携带外部已确定的奖励键（如文件操作成功 add_success）。
     """
 
-    def __init__(self, max_rounds: int = 6, time_threshold: float = 120.0):
-        self.max_rounds = max_rounds
-        self.time_threshold = time_threshold
+    def __init__(self, max_rounds: int = None, time_threshold: float = None):
+        # 默认值来自 config/app.yaml 的 rl: 段（max_rounds / retrieval_budget 秒），
+        # 配置缺失时回退代码内置默认值；显式传参优先。
+        self.max_rounds = get_max_rounds() if max_rounds is None else max_rounds
+        self.time_threshold = get_time_threshold() if time_threshold is None else time_threshold
+        # 跨轮证据充分性裁决器（新增模块，不可用时自动回退原启发式）
+        try:
+            from evidence_adjudicator import CrossRoundEvidenceAdjudicator
+            self.adjudicator = CrossRoundEvidenceAdjudicator()
+        except Exception:
+            self.adjudicator = None
 
     def check(self, state: AgentState, reward_hint: str = None, reward_key: str = None) -> Tuple[bool, str, str]:
         # reward_key 兼容别名
@@ -72,6 +82,13 @@ class TerminationPolicy:
 
         if self._detect_contradictions(state):
             return False, "证据之间存在矛盾，需要继续检索澄清"
+
+        # 跨轮证据充分性裁决（新增）：多轮证据聚合后先裁决，
+        # 置信结论直接采用；无法判定时回退下方原有启发式规则
+        if self.adjudicator is not None:
+            verdict = self.adjudicator.adjudicate(state)
+            if verdict is not None:
+                return verdict
 
         # 计算证据质量指标
         quality_score = self._calculate_evidence_quality(state)

@@ -175,6 +175,8 @@ def main():
 
     mode = "全新训练" if not agent.loaded_from_disk else "续训"
     print(f"\n  [开始] {mode}，目标 {total} 步，ε={agent.epsilon:.4f}")
+    print(f"  [架构] Transformer Q-network + NSP (Looped T=6, MoE E=8, "
+          f"λ_nsp={agent.nsp_lambda}, Engram)")
 
     t0 = time.time()
     templates_list = list(agent.TASK_TEMPLATES.keys())
@@ -205,6 +207,14 @@ def main():
 
         agent.store_experience(vec, action, reward, vec, done)
         agent.train_step()
+
+        # Engram 写入: 高置信度时积累经验
+        if done and hasattr(agent, 'engram'):
+            with torch.no_grad():
+                feat_tensor = torch.FloatTensor(vec).unsqueeze(0)
+                cls_hidden = agent.q_network.transformer(feat_tensor)[:, 0]
+                conf_tensor = torch.FloatTensor([[1.0 if done else 0.5]])
+                agent.engram.write(cls_hidden, feat_tensor, conf_tensor)
 
         if step % log_every == 0:
             acc = eval_accuracy(agent)

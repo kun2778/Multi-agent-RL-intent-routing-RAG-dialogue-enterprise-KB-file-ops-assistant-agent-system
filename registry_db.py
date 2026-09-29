@@ -240,15 +240,22 @@ class RegistryDB:
 
 
 def compute_file_hash(path: str, chunk_size: int = 8192) -> str:
-    """计算文件内容的 SHA256 哈希。"""
+    """计算文件内容的 SHA256 哈希。
+
+    大文件（>= open_read 的 mmap 阈值）直接把只读 mmap 整体喂给哈希器：
+    零拷贝，且不必按 8KB 逐次系统调用；小文件仍分块流式读。
+    """
+    from atomic_io import open_read
     h = hashlib.sha256()
     try:
-        with open(path, "rb") as f:
-            while True:
-                data = f.read(chunk_size)
-                if not data:
-                    break
-                h.update(data)
+        with open_read(path) as raw:
+            if isinstance(raw, (bytes, bytearray)):
+                step = max(chunk_size, 1 << 20)
+                view = memoryview(raw)
+                for i in range(0, len(view), step):
+                    h.update(view[i:i + step])
+            else:
+                h.update(raw)
         return h.hexdigest()
     except OSError:
         return ""

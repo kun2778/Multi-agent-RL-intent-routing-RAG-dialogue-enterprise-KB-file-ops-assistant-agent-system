@@ -76,17 +76,15 @@ class BaiduOCR(OCRProvider):
         
         start_time = time.time()
         
-        # 读取图像数据
+        # 读取图像数据并 Base64 编码（大图走只读 mmap，不整块读进内存）
         if image_bytes:
-            image_data = image_bytes
+            image_base64 = base64.b64encode(image_bytes).decode("utf-8")
         elif image_path:
-            with open(image_path, "rb") as f:
-                image_data = f.read()
+            from atomic_io import open_read
+            with open_read(image_path) as image_data:
+                image_base64 = base64.b64encode(image_data).decode("utf-8")
         else:
             raise ValueError("Either image_path or image_bytes must be provided")
-        
-        # Base64编码
-        image_base64 = base64.b64encode(image_data).decode("utf-8")
         
         # 调用百度OCR API
         token = self._get_access_token()
@@ -142,12 +140,13 @@ class TencentOCR(OCRProvider):
             import time
             start_time = time.time()
             
-            # 读取图像
+            # 读取图像（大图走只读 mmap，不整块读进内存）
             if image_bytes:
                 image_base64 = base64.b64encode(image_bytes).decode("utf-8")
             elif image_path:
-                with open(image_path, "rb") as f:
-                    image_base64 = base64.b64encode(f.read()).decode("utf-8")
+                from atomic_io import open_read
+                with open_read(image_path) as image_data:
+                    image_base64 = base64.b64encode(image_data).decode("utf-8")
             else:
                 raise ValueError("Either image_path or image_bytes must be provided")
             
@@ -212,9 +211,12 @@ class TesseractOCR(OCRProvider):
         
         start_time = time.time()
         
-        # 加载图像
+        # 加载图像（BytesIO 分级：小图直接 BytesIO，大图落临时文件避免复制缓冲区）
         if image_bytes:
-            image = Image.open(io.BytesIO(image_bytes))
+            from atomic_io import open_blob
+            with open_blob(image_bytes, suffix=".img") as stream:
+                image = Image.open(stream)
+                image.load()          # 立即解码，之后流可以安全关闭
         elif image_path:
             image = Image.open(image_path)
         else:

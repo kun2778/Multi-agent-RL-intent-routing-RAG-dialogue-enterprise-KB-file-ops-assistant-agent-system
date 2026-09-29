@@ -23,11 +23,14 @@ from providers.config_loader import get_config_loader
 VALID_INTENTS = [
     "add_file", "delete_file", "modify_file",
     "refactor", "query", "deep_search", "vague",
+    "file_analysis", "file_scan", "report_generate",
+    "filename_query",
 ]
 
 VALID_QUERY_SUBINTENTS = [
     "query_metadata", "query_content", "query_ocr", "query_summary",
     "query_translate", "query_extract", "query_search", "query_system", "query_other",
+    "query_file_scan", "query_file_analyze", "query_readonly_report",
 ]
 
 INTENT_GUIDE = [
@@ -38,6 +41,10 @@ INTENT_GUIDE = [
     ("query", "查询/搜索/查找本地文件与信息的事实问题，如「搜索 强化学习」「找到红警3的启动程序在哪里」"),
     ("deep_search", "深度分析/对比/综合多个主题或文件，如「对比分析 a 和 b 的差异」"),
     ("vague", "指令模糊、缺操作、缺目标、意图不明，需要向用户澄清"),
+    ("file_analysis", "文件深度分析：只读分析项目文件结构、代码质量、依赖关系等"),
+    ("file_scan", "文件扫描：只读扫描目录，列出文件、统计信息、检测特殊标记"),
+    ("report_generate", "生成报告：基于分析结果生成Markdown/JSON/CSV格式的审查报告"),
+    ("filename_query", "按名称搜索文件：查找最近添加/修改/创建的文件名，如「为我找到最近添加的文件名」「最近修改的文件有哪些」"),
 ]
 
 QUERY_SUBINTENT_GUIDE = [
@@ -49,11 +56,14 @@ QUERY_SUBINTENT_GUIDE = [
     ("query_extract", "提取字段：从文件中提取特定信息，如「提取文件中的关键数据」"),
     ("query_search", "搜索信息：在文件库中搜索特定内容，如「搜索强化学习相关文件」"),
     ("query_system", "系统查找：查找系统中的程序或文件，如「找到红警3的启动程序在哪里」"),
+    ("query_file_scan", "文件扫描：只读扫描项目文件，如「扫描项目中的所有Python文件」"),
+    ("query_file_analyze", "文件分析：深度分析文件内容，如「分析代码复杂度」「检查TODO标记」"),
+    ("query_readonly_report", "只读报告：生成只读审查报告，如「生成代码审查报告」"),
 ]
 
 SYSTEM_PROMPT = (
     "你是 AgentRL 系统的意图路由调度器。请把用户的中文指令分类。\n\n"
-    "【一级意图】（7类）：\n"
+    "【一级意图】（11类）：\n"
     + "\n".join(f"  - {v}：{desc}" for v, desc in INTENT_GUIDE) + "\n\n"
     "【QUERY 子意图】（当一级意图为 query 时，需进一步分类）：\n"
     + "\n".join(f"  - {v}：{desc}" for v, desc in QUERY_SUBINTENT_GUIDE) + "\n\n"
@@ -65,7 +75,10 @@ SYSTEM_PROMPT = (
     "  5. 打招呼、闲聊、与文件系统无关的日常话题，一律归为 vague。\n"
     "  6. 当意图为 query 时，必须指定 query_sub_intent 字段。\n"
     "  7. OCR相关：「识别截屏文字」「提取图片内容」属于 query_ocr。\n"
-    "  8. 最近截屏：「最近的截屏」「刚才的截图」需先定位文件再OCR。\n\n"
+    "  8. 最近截屏：「最近的截屏」「刚才的截图」需先定位文件再OCR。\n"
+    "  9. 新增：只读分析/扫描/报告生成属于独立意图，不要误判为query或deep_search。\n"
+    "  10. 新增：包含「只读」「不修改」「禁止」等关键词时，必须使用只读路径。\n"
+    "  11. 新增：按名称搜索文件（最近添加/修改/创建）属于 filename_query 意图。\n\n"
     "只输出一个 JSON 对象，不要任何解释或 Markdown：\n"
     '  {"intent": "<一级意图>", "query_sub_intent": "<子意图，仅query时填写>", '
     '"target": "<涉及的目标文件/实体>", "slots": {"file_path": "", "image_path": "", "language": ""}, '

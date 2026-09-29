@@ -25,6 +25,7 @@ AgentRL 意图识别（7 类动作, Q-Learning）
 | 组件 | 实现 |
 |------|------|
 | **RL 策略** | Q-Learning 神经网络 (PyTorch) + Experience Replay + ε-greedy |
+| **意图仲裁** | LLM + Q网络 + 分类头 + 关键词规则 + **检索式投票**（标注语料 FAISS 召回）五方加权 |
 | **动作空间** | 7 类意图（添加/删除/修改/整理/查询/深度检索/澄清） |
 | **状态观测** | 22 维：12 维状态向量 + 7 维操作分 + 目标/实体/长度特征 |
 | **向量检索** | TF-IDF 嵌入 + FAISS（缺失时 numpy 回退），支持中文（单字+二元组） |
@@ -44,6 +45,7 @@ AgentRL 意图识别（7 类动作, Q-Learning）
 | `router.py` | 调度中心（菱形节点）：意图→处理器→奖励→终止 |
 | `evidence_evaluator.py` | **终止条件模块**：操作提交成功/证据充分/资源预算 双条件终止 |
 | `fact_query.py` | 单轮向量检索分支 |
+| `intent_retriever.py` | **检索式意图投票**：标注语料稠密向量召回，classify_intent 第四路信号 |
 | `deep_search.py` | 多轮迭代检索：子查询拆解→逐轮检索→证据评估→补充检索 |
 | `answer_generator.py` | 操作结果总结 / 深度答案+引用 |
 
@@ -106,3 +108,53 @@ python main.py "对比分析 强化学习.txt 和 python简介.txt"
 ```
 
 语料库位于 `workspace/`，删除的文件进入 `.trash`，修改前自动备份到 `.backup`。
+
+## 验证与 CI
+
+```bash
+python test_infra.py              # 基础设施：原子写 / 读写锁 / 写队列 / 脱敏 / 回归 gate 判定
+python test_intent_retriever.py   # 检索式意图识别 9 项
+python test_marl.py               # MARL 交叉验证 11 项
+python regression_gate.py         # 回归 gate：0=通过 1=回退 2=缺基线/集合被改
+python regression_gate.py --json  # 同上，输出机读报告
+```
+
+gate 与**本地缓存状态无关**：运行时会丢弃已构造的检索索引、从语料强制重建，
+因此本地（命中过旧缓存）与 CI（冷启动）给出的逐条预测一致；嵌入器的构造逻辑
+一旦变化需同步递增 `embedding.py` 的 `schema_version`，否则旧向量会被误认为有效缓存。
+
+基线在 `eval/regression/baseline.json`，回归集被有意修改时用
+`python regression_gate.py --update-baseline` 重新固化。
+CI 见 `.github/workflows/regression-gate.yml`：先跑单元测试，再跑 gate，任一失败即拦截。
+
+## 路线图（Roadmap）
+
+### 一、增量学习
+
+按依赖关系排序，先建安全网、再接数据回路、最后做稳定性与外部记忆：
+
+| 顺序 | 事项 | 落点 | 状态 |
+|------|------|------|------|
+| 1 | **补回归 gate**：固定回归集 + 基线 + 阈值 + CI 自动拦截 | `regression_gate.py`（确定性回归集 `eval/regression/regression.jsonl`、基线 `baseline.json`、容忍阈值 + 集合哈希防篡改），`.github/workflows/regression-gate.yml` 自动拦截 | ✅ |
+| 2 | **失败数据回流 replay**：线上 bad case 脱敏入 buffer | `redaction.py`（`redact()` 脱敏）+ `badcase_replay.py`（`FAILURE_DIR` → `replay_buffer.push()`，sha1 去重持久化，`main.py` 启动时自动回流，失败不阻塞启动） | ✅ |
+| 3 | **持久化 replay buffer 和模型版本** | `agent_rl.py` `save()/load()`：checkpoint 旁挂 `<path>.replay.npz`（上限 20000 条），`save_version/list_model_versions/latest_model_version/load_version` 落 `models/versions/v_*`，原子写 | ✅ |
+| 4 | **软更新 + PER 稳定在线策略** | `agent_rl.py`：τ 退火（`tau_init→tau_base`，随 checkpoint 保存）、TD-error 裁剪 + NaN 清洗、新样本优先级下限防饿死、β 退火、loss 非有限值跳过这一步、`SumTree._propagate` 越界保护 | ✅ |
+| 5 | **Engram 外部记忆作为补充** | `agent_rl.py` `classify_intent()`：仅在投票置信度低于 `CONFIDENCE_THRESHOLD` 时读取；一致则按 `ENGRAM_WEIGHT` 抬升置信度，不一致需高出 `ENGRAM_MIN_MARGIN` 才改判，高置信度绝不被外部记忆覆盖 | ✅ |
+
+**原则**：gate 未通过不放行新版本；失败样本先脱敏再进 buffer；模型与 buffer 同版本落盘，可回滚。
+
+### 二、并发与文件
+
+按"先保证不损坏、再提升吞吐、最后优化内存"排序：
+
+| 顺序 | 事项 | 落点 | 状态 |
+|------|------|------|------|
+| 1 | **所有写文件改成 `os.replace` 原子写**（临时文件 + 同目录替换） | `atomic_io.py`（`atomic_write_text/json/bytes/torch_save/savez/append_line`），已覆盖 `chat_server.py`、`continuous_learning.py`、`safety.py`、`faiss_store.py`（含 `index.faiss`）、`intent_retriever.py`、`system_file_finder.py`、`main.py`、`file_corpus.py`、`analyze.py`、`reverse/reverse_moves.py` | ✅ |
+| 2 | **加 fsync 和目录 fsync** | `atomic_io.py` `_commit()`：写临时文件 → `fsync` → `os.replace` → `fsync_dir`（NTFS 上目录 fsync 不可用，已按平台降级）；开关 `AGENTRL_FSYNC=0` | ✅ |
+| 3 | **全局锁升级为读写锁** | `rwlock.py`（写者优先 `RWLock`）→ `intent_retriever.py`（检索读共享 / 重建与 `add_example` 写独占）、`chat_server.py` `get_system()`（查表读共享 / 首次构造写独占，消除双初始化） | ✅ |
+| 4 | **写操作队列化，单写者消费** | `write_queue.py`（单消费者线程 + 未完成计数的 `flush()`），已接入 `continuous_learning` 的读-改-写统计、`safety` 操作日志、`system_file_finder` 缓存；读路径先 `flush()` 再读；`atexit` 收尾 | ✅ |
+| 5 | **大文件读用 mmap** | `atomic_io.open_read()`（≥8MiB 走只读 mmap）→ `registry_db.compute_file_hash()`（零拷贝喂哈希器）、`file_corpus/parallel_scanner/faiss_store` 文本读取（`decode_bytes()` 增量解码，mmap 不复制成 bytes）、`mcp_server/ocr_module.py` 图片读取 | ✅ |
+| 6 | **PDF 改流式逐页处理** | `pdf_parser.py`：四个后端（pypdf/pdfplumber/fitz/builtin）均逐页累计，达到 `max_chars` 即停（`metadata['truncated']`），不为截断而解压整份 PDF | ✅ |
+| 7 | **小文件继续 BytesIO，大文件避免全量入内存** | `atomic_io.open_blob()` 分级（≤8MiB 用 `BytesIO`，更大落临时文件）→ `compression_handler.py` zip/tar 解析、`mcp_server/ocr_module.py` 图片加载 | ✅ |
+
+**原则**：写路径先原子化再谈并发；读路径先流式化再谈缓存。

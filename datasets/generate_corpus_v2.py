@@ -5,8 +5,10 @@
 """
 
 import csv
+import io
 import os
 import random
+import sys
 
 random.seed(42)
 
@@ -438,10 +440,13 @@ def main():
 
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "intent_corpus.csv")
-    with open(path, "w", encoding="utf-8", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["text", "label"])
-        writer.writerows(rows)
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["text", "label"])
+    writer.writerows(rows)
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from atomic_io import atomic_write_text
+    atomic_write_text(path, buf.getvalue(), encoding="utf-8")
 
     print(f"Generated {len(rows)} samples → {path}")
     from collections import Counter

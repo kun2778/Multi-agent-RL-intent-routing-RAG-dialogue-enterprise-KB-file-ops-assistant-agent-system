@@ -30,6 +30,7 @@ READABLE_EXTENSIONS = {
     'jsx', 'tsx', 'vue', 'svelte', 'rb', 'php', 'pl', 'r', 'scala', 'kt',
     'swift', 'm', 'mm', 'dart', 'lua', 'ex', 'exs', 'erl', 'hs', 'ml',
     'fs', 'fsx', 'clj', 'el', 'vim', 'elvish',
+    'pdf',  # 走 pdf_parser 专用解析
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -98,6 +99,12 @@ class ScanStats:
     total_errors: int = 0
     elapsed_seconds: float = 0.0
     bytes_scanned: int = 0
+    skip_reasons: List[Dict[str, str]] = field(default_factory=list)
+
+    def record_skip(self, path: str, reason: str, category: str = "other"):
+        self.total_skipped += 1
+        if len(self.skip_reasons) < 5000:
+            self.skip_reasons.append({"path": path, "reason": reason, "category": category})
 
 
 class ParallelScanner:
@@ -136,6 +143,7 @@ class ParallelScanner:
         self.excluded_dir_names = excluded_dir_names or EXCLUDED_DIR_NAMES
         self.readable_extensions = readable_extensions or READABLE_EXTENSIONS
         self.progress_callback = progress_callback
+        self._last_stats: Optional[ScanStats] = None
 
         # 符号链接/硬链接检测
         self._seen_inodes: Set[Tuple[int, int]] = set()  # (st_dev, st_ino)
@@ -184,15 +192,18 @@ class ParallelScanner:
         return ext in self.readable_extensions
 
     def _read_text(self, path: str) -> Optional[str]:
-        """尝试以多种编码读取文本文件。"""
+        """尝试以多种编码读取文本文件；PDF 走专用解析模块。"""
+        # PDF：使用 pdf_parser 提取文本（失败返回 None → 标记为不可读）
+        if path.lower().endswith('.pdf'):
+            try:
+                from pdf_parser import extract_pdf_text
+                return extract_pdf_text(path)
+            except Exception:
+                return None
         try:
-            raw = open(path, "rb").read()
-            for enc in ("utf-8", "gbk", "gb18030", "latin-1"):
-                try:
-                    return raw.decode(enc)
-                except (UnicodeDecodeError, ValueError):
-                    continue
-            return raw.decode("latin-1", errors="ignore")
+            from atomic_io import decode_bytes, open_read
+            with open_read(path) as raw:
+                return decode_bytes(raw)
         except OSError:
             return None
 
@@ -205,27 +216,18 @@ class ParallelScanner:
         start_time = time.time()
         stats = ScanStats()
 
-        print(f"[Scanner] 开始扫描: {self.root}")
-        print(f"[Scanner] 最大线程数: {self.max_workers}, 最大文件大小: {self.max_file_size / 1024 / 1024:.1f}MB")
-
-        # 阶段 1：遍历目录，收集文件元数据
-        print("[Scanner] 阶段 1/3: 遍历目录...")
+        # 阶段 1：遍历目录
         file_entries = self._walk_directory(stats)
-        print(f"[Scanner] 发现 {len(file_entries)} 个文件")
 
-        # 阶段 2：与注册表对比，确定需要更新的文件
-        print("[Scanner] 阶段 2/3: 增量对比...")
+        # 阶段 2：增量对比
         to_update, to_delete = self._diff_with_registry(file_entries, stats)
-        print(f"[Scanner] 需更新: {len(to_update)}, 需删除: {len(to_delete)}")
 
-        # 阶段 3：并行读取文件内容并更新注册表
-        print("[Scanner] 阶段 3/3: 读取文件并更新注册表...")
+        # 阶段 3：并行读取文件并更新注册表
         self._process_files(to_update, to_delete, stats)
 
         stats.elapsed_seconds = time.time() - start_time
-        print(f"[Scanner] 扫描完成: {stats.total_scanned} 文件, "
-              f"{stats.total_updated} 更新, {stats.total_deleted} 删除, "
-              f"{stats.elapsed_seconds:.1f}s")
+        self._last_stats = stats
+        print(f"[Scanner] 扫描完成: {stats.total_scanned}文件, {stats.total_updated}更新, {stats.total_deleted}删除, {stats.total_skipped}跳过, {stats.elapsed_seconds:.1f}s")
 
         return stats
 
@@ -246,14 +248,29 @@ class ParallelScanner:
                             if entry.is_dir(follow_symlinks=False):
                                 # 检查是否为符号链接目录
                                 if entry.is_symlink():
+                                    try:
+                                        rel_link = os.path.relpath(entry.path, self.root)
+                                    except ValueError:
+                                        rel_link = entry.path
+                                    stats.record_skip(rel_link, "符号链接目录（跳过防循环）", "symlink")
                                     continue  # 跳过符号链接目录
 
                                 dirname = entry.name
                                 if self._is_excluded_dir(dirpath, dirname):
+                                    try:
+                                        rel_ex = os.path.relpath(entry.path, self.root)
+                                    except ValueError:
+                                        rel_ex = entry.path
+                                    stats.record_skip(rel_ex, "目录排除", "ignore")
                                     continue
 
                                 # 硬链接检测
                                 if not self._check_link(entry.path):
+                                    try:
+                                        rel_hl = os.path.relpath(entry.path, self.root)
+                                    except ValueError:
+                                        rel_hl = entry.path
+                                    stats.record_skip(rel_hl, "重复 inode/硬链接", "symlink")
                                     continue
 
                                 _scan_dir(entry.path)
@@ -261,17 +278,35 @@ class ParallelScanner:
                             elif entry.is_file(follow_symlinks=False):
                                 filename = entry.name
                                 if self._is_excluded_file(filename):
+                                    try:
+                                        rel_fe = os.path.relpath(entry.path, self.root)
+                                    except ValueError:
+                                        rel_fe = entry.path
+                                    stats.record_skip(rel_fe, "文件名排除", "ignore")
                                     continue
 
                                 # 检查文件大小
                                 try:
                                     stat_result = entry.stat(follow_symlinks=False)
-                                except OSError:
+                                except OSError as e:
                                     stats.total_errors += 1
+                                    try:
+                                        rel_os = os.path.relpath(entry.path, self.root)
+                                    except ValueError:
+                                        rel_os = entry.path
+                                    stats.record_skip(rel_os, f"stat 失败: {e}", "permission")
                                     continue
 
                                 if stat_result.st_size > self.max_file_size:
-                                    stats.total_skipped += 1
+                                    try:
+                                        rel_sz = os.path.relpath(entry.path, self.root)
+                                    except ValueError:
+                                        rel_sz = entry.path
+                                    stats.record_skip(
+                                        rel_sz,
+                                        f"大小超限 {stat_result.st_size} > {self.max_file_size}",
+                                        "size",
+                                    )
                                     continue
 
                                 # 跳过空文件
@@ -298,15 +333,25 @@ class ParallelScanner:
                                 if self.progress_callback and stats.total_scanned % 1000 == 0:
                                     self.progress_callback(stats.total_scanned, 0, rel_path)
 
-                        except (OSError, PermissionError):
+                        except (OSError, PermissionError) as e:
                             stats.total_errors += 1
+                            try:
+                                rel_err = os.path.relpath(entry.path, self.root)
+                            except (ValueError, UnboundLocalError):
+                                rel_err = getattr(entry, 'path', '?')
+                            stats.record_skip(rel_err, f"权限/IO 错误: {e}", "permission")
                             continue
 
-            except (OSError, PermissionError):
+            except (OSError, PermissionError) as e:
                 stats.total_errors += 1
+                stats.record_skip(dirpath, f"目录权限错误: {e}", "permission")
 
         _scan_dir(self.root)
         return entries
+
+    def get_last_skip_records(self) -> List[Dict[str, str]]:
+        """返回最近一次扫描的跳过记录（含原因）。"""
+        return list(getattr(self, "_last_stats", None).skip_reasons) if getattr(self, "_last_stats", None) else []
 
     def _diff_with_registry(
         self, file_entries: Dict[str, dict], stats: ScanStats

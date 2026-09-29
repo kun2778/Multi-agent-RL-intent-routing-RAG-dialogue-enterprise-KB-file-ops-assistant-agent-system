@@ -67,8 +67,7 @@ class AnswerGenerator:
         if state.last_operation() and state.current_intent in OP_INTENTS:
             return self._format(self._operation_answer(state), state)
         if state.final_answer:
-            intro = f"### 目标指令\n{state.dialog_history[0].user_query if state.dialog_history else ''}\n"
-            return self._format(f"{intro}\n{state.final_answer}", state)
+            return self._format(state.final_answer, state)
 
         query = state.dialog_history[0].user_query if state.dialog_history else ""
         context = self._compress_context(state)
@@ -79,8 +78,6 @@ class AnswerGenerator:
         ev = state.last_operation()
         status = "成功" if ev.success else "失败"
         lines = [
-            f"### 目标指令",
-            f"{state.dialog_history[0].user_query if state.dialog_history else ''}\n",
             f"### 操作结果: {status}",
             f"- 操作类型: {ev.kind}",
             f"- 目标文件: {ev.target or '（未指定）'}",
@@ -117,11 +114,13 @@ class AnswerGenerator:
                         "path": doc.get("path", doc.get("source", "未知")),
                         "score": doc.get("score", 0.0),
                         "round": ev.round_num,
+                        "content": content,
                     })
         items.sort(key=lambda x: x["score"], reverse=True)
         context = "### 检索到的证据 ###"
         for i, it in enumerate(items[:8], 1):
-            context += f"\n[证据{i}] ({it['path']}, 得分: {it['score']:.4f}, 轮次: {it['round']})"
+            context += f"\n[证据{i}] (来源: {it['path']}, 得分: {it['score']:.4f}, 轮次: {it['round']})\n"
+            context += f"{it['content']}\n"
         return context
 
     def _generate_citations(self, state: AgentState) -> List[str]:

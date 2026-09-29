@@ -18,6 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from runtime_paths import LOG_DIR
+from atomic_io import atomic_write_json
 
 DESKTOP = Path(os.path.expanduser("~")) / "Desktop"
 LOG_FILE = LOG_DIR / "reverse_moves_log.json"
@@ -171,11 +172,10 @@ def do_reverse(dry_run=False, auto_confirm=False):
             print(f"  [FAIL] {os.path.basename(src)}: {e}")
 
     # Save rollback log
-    with open(LOG_FILE, "w", encoding="utf-8") as fh:
-        json.dump({
-            "timestamp": __import__("datetime").datetime.now().isoformat(),
-            "operations": log_ops,
-        }, fh, ensure_ascii=False, indent=2)
+    atomic_write_json(LOG_FILE, {
+        "timestamp": __import__("datetime").datetime.now().isoformat(),
+        "operations": log_ops,
+    })
 
     print()
     print("=" * 50)

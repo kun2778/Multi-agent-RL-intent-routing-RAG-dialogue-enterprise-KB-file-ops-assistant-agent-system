@@ -7,6 +7,9 @@ app:
   debug: false
   log_level: "INFO"
 
+# RL 运行参数（由 rl_config.py 读取，AgentRL/AgentState/TerminationPolicy 生效）：
+#   gamma → AgentRL.gamma；max_rounds → AgentState.max_rounds / TerminationPolicy.max_rounds；
+#   retrieval_budget(秒) → AgentState.retrieval_budget / TerminationPolicy.time_threshold
 rl:
   max_rounds: 5
   retrieval_budget: 300.0  # seconds
@@ -31,15 +34,29 @@ intent_llm:
     model: "qwen2.5:3b-instruct"
     base_url: "http://127.0.0.1:11434/v1"
     timeout: 60
+  # 奖励表：在 AgentRL.__init__ 中合并进 agent_rl.AgentRL.REWARD_MAP（键名先经
+  # rl_config.REWARD_KEY_ALIASES 归一到代码规范键，如 query_success / add_failure），
+  # 修改此处即改变运行时奖励；键名必须与 REWARD_MAP 一致
   reward:
-    correct_routing: 10.0
-    successful_retrieval: 5.0
-    evidence_sufficient: 8.0
-    clarification_resolved: 7.0
-    unnecessary_computation: -3.0
-    wrong_routing: -5.0
-    timeout: -3.0
+    add_success: 5.0
+    delete_success: 5.0
+    modify_success: 5.0
+    refactor_success: 7.0
+    query_success: 5.0
+    deep_search_success: 8.0
+    add_failure: -4.0
+    delete_failure: -4.0
+    modify_failure: -4.0
+    refactor_failure: -4.0
     insufficient_evidence: -2.0
+    clarification_resolved: 7.0
+    timeout: -3.0
+    evidence_sufficient: 8.0
+    # 轮次衰减（运行时真源：agent_rl.py 顶部 CLARIFY_* / R_WRONG 常量）：
+    #   带 state 调用时，答对键按 a_k = a_{k-1} - q_k - eps_k 折算，
+    #   clarification_resolved 按 q_k = 1.5 * 0.8^(k-1) 折算（k = 已澄清轮数+1），
+    #   失败/超时键不衰减。路径总量满足 P1 < P2 = P3 > P4 > ... > 答错(-4.0)。
+    #   询问/回答决策由 agent_rl.confidence_threshold(k) 的期望阈值 p* 决定。
 
 rag:
   chunk_size: 500
@@ -65,11 +82,20 @@ faiss_store:
   index_type: "flat"       # flat (IndexFlatIP) 或 ivf (IndexIVFFlat)
   persist_dir: ".runtime/faiss"
 
+# 检索式意图识别：标注语料库向量召回，作为 classify_intent 第四路投票信号
+# （与端到端分类头/Q网络/LLM/规则 并列，低相似度自动弃权，不替代任何一路）
+intent_retrieval:
+  enabled: true
+  top_k: 5               # 召回相似例句数
+  min_similarity: 0.30   # 低于该相似度弃权（避免 OOD 乱投）
+  max_samples: 8000      # 语料上限（超量按标签均匀抽样）
+  persist: true          # 向量索引持久化到 .runtime/cache/intent_index/
+
 # Embedding configuration
 embedding:
-  model: "local"  # or local model
-  provider: "tfidf"
-  dimension: 128
+  backend: "auto"  # auto | sentence_transformers | tfidf
+  model: "BAAI/bge-small-zh-v1.5"  # sentence-transformers model name
+  dimension: null  # null = auto-detect from model (512 for bge-small-zh, 128 for tfidf)
   batch_size: 32
 
 # LLM generation configuration

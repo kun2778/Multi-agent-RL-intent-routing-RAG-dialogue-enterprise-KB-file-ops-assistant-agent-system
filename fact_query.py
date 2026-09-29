@@ -13,7 +13,10 @@ class FactQueryHandler:
         self.top_k = top_k
 
     def retrieve(self, query: str) -> RetrievalResult:
-        docs = self.corpus.search(query, self.top_k)
+        from rerank import rerank_documents
+        # 单轮流程：多召回 → rerank 重排精选
+        candidates = self.corpus.search(query, max(self.top_k * 3, self.top_k))
+        docs = rerank_documents(query, candidates, top_k=self.top_k)
         retrieval_results = []
         for doc in docs:
             retrieval_results.append({
@@ -33,7 +36,10 @@ class FactQueryHandler:
             round_num=1,
         )
 
-        print(f"  [事实查询] FAISS 检索返回 {len(retrieval_results)} 个文档，最高得分: {result.score:.4f}")
+        backend = docs[0].get("rerank_backend", "-") if docs else "-"
+        print(f"  [事实查询] FAISS 召回 {len(candidates)} 候选，rerank 重排后保留 "
+              f"{len(retrieval_results)} 个文档（后端: {backend}），"
+              f"最高得分: {result.score:.4f}")
         for doc in retrieval_results[:3]:
             print(f"    - [得分:{doc['score']:.4f}] {doc['path']} | {doc['content'][:50]}")
         if not retrieval_results:

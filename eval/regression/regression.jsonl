@@ -1,0 +1,124 @@
+{"label": "deep_search", "text": "分析 utils.js 和 setup.cfg 的架构差异？"}
+{"label": "deep_search", "text": "帮我帮分析一下 边缘计算 的影响"}
+{"label": "deep_search", "text": "深度对比 云计算 和 自动化测试 的区别"}
+{"label": "deep_search", "text": "能不能评估 机器学习 方案的可行性"}
+{"label": "deep_search", "text": "帮忙评估代码审查的技术选型"}
+{"label": "deep_search", "text": "深度分析敏捷开发逻辑"}
+{"label": "deep_search", "text": "深入分析 style.css 中的 强化学习"}
+{"label": "deep_search", "text": "评估数据库优化的技术选型"}
+{"label": "deep_search", "text": "分析设计模式的复杂度"}
+{"label": "deep_search", "text": "有空的话帮我分析一下代码审查 的影响"}
+{"label": "deep_search", "text": "评估 强化学习 的可行性"}
+{"label": "deep_search", "text": "对比分析各个模块？"}
+{"label": "modify_file", "text": "编辑文件 server.rs 加上 微服务"}
+{"label": "modify_file", "text": "麻烦更新 Procfile 的内容"}
+{"label": "modify_file", "text": "辛苦帮我把 report.md 改成 产品设计"}
+{"label": "modify_file", "text": "可以帮我修改 docs/Dockerfile 的内容"}
+{"label": "modify_file", "text": "辛苦帮我编辑 test.py"}
+{"label": "modify_file", "text": "更新 config/database.sql 里的 微服务"}
+{"label": "modify_file", "text": "帮忙更新 notes.txt 修复bug呗"}
+{"label": "modify_file", "text": "帮忙修改 CONTRIBUTING.md 的逻辑"}
+{"label": "modify_file", "text": "改一下 LICENSE 的内容"}
+{"label": "modify_file", "text": "我想把 Cargo.toml 更新为 边缘计算"}
+{"label": "modify_file", "text": "帮我更新 Cargo.toml"}
+{"label": "modify_file", "text": "更新 .env 里的数据"}
+{"label": "refactor", "text": "代码重构"}
+{"label": "refactor", "text": "麻烦整理脚本到 build 目录"}
+{"label": "refactor", "text": "辛苦移动文件到正确的位置"}
+{"label": "refactor", "text": "帮我把测试文件移到 tests 目录"}
+{"label": "refactor", "text": "移动文件到对应文件夹"}
+{"label": "refactor", "text": "整理一下项目目录"}
+{"label": "refactor", "text": "帮我整理文件夹"}
+{"label": "refactor", "text": "整理配置文件到 docs 目录"}
+{"label": "refactor", "text": "帮忙重命名 nginx.conf 为 celery.py"}
+{"label": "refactor", "text": "麻烦有空的话重构项目目录结构可以吗"}
+{"label": "refactor", "text": "移动文档到 data 目录"}
+{"label": "refactor", "text": "我想把文件归类整理"}
+{"label": "query", "text": "查一下这个目录"}
+{"label": "query", "text": "帮忙查一下这个目录"}
+{"label": "query", "text": "查看 settings.py 的代码"}
+{"label": "query", "text": "test.py 存在吗"}
+{"label": "query", "text": "查看 docs/Cargo.toml 的内容"}
+{"label": "query", "text": "帮我搜索一下"}
+{"label": "query", "text": "查一下 tests 里面有什么文件"}
+{"label": "query", "text": "查看当前目录有哪些文件"}
+{"label": "query", "text": "查一下系统状态"}
+{"label": "query", "text": "搜索关于机器学习的资料"}
+{"label": "query", "text": "搜索强化学习"}
+{"label": "query", "text": "请找一下 自动化测试 在哪里一下"}
+{"label": "add_file", "text": "写入新文件 style.css"}
+{"label": "add_file", "text": "有空的话写一个 .gitignore 文件"}
+{"label": "add_file", "text": "能不能写一个 LICENSE 放进去"}
+{"label": "add_file", "text": "添加 settings.py 到项目中，scripts下面"}
+{"label": "add_file", "text": "写一个 tsconfig.json 把 微服务 放进去"}
+{"label": "add_file", "text": "帮我帮我写个 utils.go 出来，vendor下面"}
+{"label": "add_file", "text": "帮忙新建 model.py 在 logs 目录"}
+{"label": "add_file", "text": "能不能新建 Cargo.toml 到 scripts"}
+{"label": "add_file", "text": "麻烦新建一个叫 package.json 的文档，立刻哈"}
+{"label": "add_file", "text": "生成 database.sql"}
+{"label": "add_file", "text": "生成报告文件 log.txt，node_modules下面"}
+{"label": "add_file", "text": "我想帮我写一个 deploy.h"}
+{"label": "delete_file", "text": "请把 model.py 拿掉"}
+{"label": "delete_file", "text": "把 settings.py 从项目里删去"}
+{"label": "delete_file", "text": "劳驾把 model.py 拿掉"}
+{"label": "delete_file", "text": "把过期的 Procfile 删了"}
+{"label": "delete_file", "text": "旧版本，把 Cargo.toml 删了"}
+{"label": "delete_file", "text": "请把 main.py 从仓库删去"}
+{"label": "delete_file", "text": "请router.py 多余的 帮我删掉"}
+{"label": "delete_file", "text": "把 report.md 删除"}
+{"label": "delete_file", "text": "不需要 daabase.sql 了删掉"}
+{"label": "delete_file", "text": "我想清理掉 auth.py吧"}
+{"label": "delete_file", "text": "把 nginx.conf 清理掉"}
+{"label": "delete_file", "text": "去掉 Dockerfile"}
+{"label": "vague", "text": "我想再说一遍"}
+{"label": "vague", "text": "麻烦帮我早上好呗"}
+{"label": "vague", "text": "嘿"}
+{"label": "vague", "text": "帮忙早安"}
+{"label": "vague", "text": "牛"}
+{"label": "vague", "text": "你会唱歌吗"}
+{"label": "vague", "text": "收到"}
+{"label": "vague", "text": "你会画画吗？"}
+{"label": "vague", "text": "哟"}
+{"label": "vague", "text": "给我讲个故事"}
+{"label": "vague", "text": "知道了"}
+{"label": "vague", "text": "test"}
+{"label": "filename_query", "text": "为我找到最近添加的文件名"}
+{"label": "filename_query", "text": "最近修改的文件有哪些"}
+{"label": "filename_query", "text": "查找最近创建的文件"}
+{"label": "filename_query", "text": "最近编辑过的文件名"}
+{"label": "filename_query", "text": "最新添加的文件有哪些"}
+{"label": "filename_query", "text": "最近保存的文件名列表"}
+{"label": "filename_query", "text": "搜索最近的txt文件"}
+{"label": "filename_query", "text": "最近修改的py文件有哪些"}
+{"label": "filename_query", "text": "找到本周创建的文件"}
+{"label": "filename_query", "text": "最近一天修改的文件"}
+{"label": "filename_query", "text": "recently modified files"}
+{"label": "filename_query", "text": "find newly created files"}
+{"label": "add_file", "text": "帮我新建一个 readme.md 项目说明文档"}
+{"label": "delete_file", "text": "把那个旧的 backup.py 删了"}
+{"label": "modify_file", "text": "更新一下 config.yaml 里的超时时间"}
+{"label": "refactor", "text": "把 src 下面的文件按功能分一下类"}
+{"label": "query", "text": "这个项目用了什么框架"}
+{"label": "deep_search", "text": "分析一下这个项目的架构和性能瓶颈"}
+{"label": "vague", "text": "你好呀"}
+{"label": "vague", "text": "今天过得怎么样"}
+{"label": "vague", "text": "帮我"}
+{"label": "file_analysis", "text": "只读分析项目代码质量，不修改任何文件"}
+{"label": "file_scan", "text": "扫描项目中的所有Python文件"}
+{"label": "report_generate", "text": "生成代码审查报告，输出Markdown格式"}
+{"label": "filename_query", "text": "查找最近创建的txt文件"}
+{"label": "file_analysis", "text": "只读分析 notes.txt 的代码质量"}
+{"label": "file_analysis", "text": "审查 config.yaml 的结构"}
+{"label": "file_analysis", "text": "检查 main.py 中的问题"}
+{"label": "file_analysis", "text": "诊断 app.json 的性能"}
+{"label": "file_analysis", "text": "评估 report.md 的复杂度"}
+{"label": "file_scan", "text": "扫描项目中的所有文件"}
+{"label": "file_scan", "text": "遍历目录列出所有文件"}
+{"label": "file_scan", "text": "统计项目文件数量"}
+{"label": "file_scan", "text": "列举所有Python文件"}
+{"label": "file_scan", "text": "扫描代码中的TODO标记"}
+{"label": "report_generate", "text": "生成代码审查报告"}
+{"label": "report_generate", "text": "输出项目分析报告"}
+{"label": "report_generate", "text": "生成Markdown格式的报告"}
+{"label": "report_generate", "text": "创建JSON格式的分析结果"}
+{"label": "report_generate", "text": "汇总生成CSV报告"}

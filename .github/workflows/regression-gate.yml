@@ -1,0 +1,46 @@
+name: regression-gate
+
+# 增量学习安全网：任何改动意图识别行为的提交，必须先过固定回归集。
+# 未通过 → 本 workflow 失败 → 拦截合入。
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Unit tests (fail fast)
+        # 基础设施（原子写/读写锁/写队列/脱敏）+ 检索 + MARL。
+        # 放在 gate 之前：先拦住明显的功能性错误，再花时间跑回归集。
+        run: python -m pytest
+
+      - name: Regression gate (fixed set + baseline + threshold)
+        # 退出码 0=通过 / 1=回归（拦截）/ 2=缺基线等错误（拦截）
+        shell: bash
+        run: |
+          set +e
+          python regression_gate.py --json | tee gate-report.json
+          code=${PIPESTATUS[0]}
+          exit $code
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: regression-gate-report
+          path: gate-report.json
+          if-no-files-found: ignore

@@ -24,7 +24,8 @@ try:
     from agent_rl import AgentRL
     agent = AgentRL()
     print(f"\n  agent_rl: 导入成功 [OK]")
-    print(f"  QNetwork 输入维度: {agent.q_network.network[0].in_features}")
+    # Transformer Q 网络无 .network 属性；state_dim 即输入特征维
+    print(f"  QNetwork 输入维度: {getattr(agent, 'state_dim', '?')}")
     print(f"  动作空间: {agent.num_actions} 类")
     print(f"  奖励表: {len(agent.REWARD_MAP)} 种事件")
 except Exception as e:
@@ -45,6 +46,17 @@ try:
     print(f"  fact_query: FAISS 索引 - {handler.get_stats()} [OK]")
 except Exception as e:
     print(f"  fact_query: 导入失败 - {e}")
+    all_ok = False
+
+try:
+    from intent_retriever import get_intent_retriever
+    ret = get_intent_retriever()
+    st = ret.stats()
+    status = "就绪" if st["ready"] else (st.get("error") or "未就绪")
+    print(f"  intent_retriever: {st['count']} 条例句, 后端={st['backend']}, "
+          f"嵌入={st['embedder']} - {status} [OK]")
+except Exception as e:
+    print(f"  intent_retriever: 导入失败 - {e}")
     all_ok = False
 
 try:

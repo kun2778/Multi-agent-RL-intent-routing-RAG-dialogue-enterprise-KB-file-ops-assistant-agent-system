@@ -6,6 +6,8 @@ from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
 from enum import Enum
 from runtime_paths import RUNTIME_ROOT, BACKUP_DIR, LOG_DIR
+from atomic_io import atomic_write_json
+from write_queue import get_default_write_queue
 
 
 class OperationType(Enum):
@@ -90,8 +92,11 @@ class SafetyManager:
                 "details": op.details,
                 "backup_paths": op.backup_paths,
             })
-        with open(self.operation_log_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        # 多个线程都会改操作日志：交给单写者队列串行落盘
+        try:
+            get_default_write_queue().submit_json(self.operation_log_path, data)
+        except RuntimeError:
+            atomic_write_json(self.operation_log_path, data)
 
     def needs_confirmation(self, operation_type: OperationType, target_count: int = 0, query: str = "") -> bool:
         if operation_type in (OperationType.DELETE, OperationType.REFACTOR):

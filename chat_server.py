@@ -31,7 +31,10 @@ except Exception:
     pass
 
 from agent_state import AgentState, SHORT_LABELS, IntentType
+from atomic_io import atomic_write_json
+from rwlock import RWLock
 from runtime_paths import CONVERSATIONS_DIR
+from continuous_learning import get_learning_engine, EvalSplit
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONV_DIR = str(CONVERSATIONS_DIR)
@@ -42,22 +45,32 @@ OP_LABELS = {
     "refactor": "整理", "query": "查询", "deep_search": "深度检索",
 }
 
-_engine_lock = threading.Lock()
+_engine_lock = threading.Lock()   # 串行化会改动共享 RL 状态的整条请求
+_engine_rw = RWLock()             # 引擎实例表读多写少：查表走共享读锁，首次构造走写锁
 _system = None
 
 
 def get_system():
-    """惰性创建共享的 AgentRL 系统（首次启动自动加载持久化模型）。"""
+    """惰性创建共享的 AgentRL 系统（首次启动自动加载持久化模型）。
+
+    用读写锁而不是普通互斥锁：
+      - 已构造 → 只持共享读锁，/health、build_trace 等读取者互不阻塞
+      - 未构造 → 持独占写锁构造，避免两个请求同时建出两套系统
+    """
     global _system
-    if _system is None:
-        try:
-            from main import AgentRLSystem
-            _system = AgentRLSystem()
-        except Exception as e:
-            print(f"[ERROR] 系统初始化失败: {e}")
-            traceback.print_exc()
-            raise
-    return _system
+    if _system is not None:
+        with _engine_rw.read():
+            return _system
+    with _engine_rw.write():
+        if _system is None:
+            try:
+                from main import AgentRLSystem
+                _system = AgentRLSystem()
+            except Exception as e:
+                print(f"[ERROR] 系统初始化失败: {e}")
+                traceback.print_exc()
+                raise
+        return _system
 
 
 def build_trace(state: AgentState, agent_rl) -> list:
@@ -123,8 +136,9 @@ def build_trace(state: AgentState, agent_rl) -> list:
     return steps
 
 
-def run_message(message: str):
-    """处理一条消息，返回 (reply, thinking, intent, path)。上锁防止并发竞争。"""
+def run_message(message: str, conversation_id: str = ""):
+    """处理一条消息，返回 (reply, thinking, intent, path, clarifications, trace_id)。上锁防止并发竞争。"""
+    start_time = __import__('time').time()
     with _engine_lock:
         system = get_system()
         router, generator, agent_rl = system.router, system.generator, system.agent_rl
@@ -139,7 +153,34 @@ def run_message(message: str):
         intent = state.current_intent.value if state.current_intent else ""
         path = state.routing_path.value if state.routing_path else ""
         clarifications = list(state.clarifications or [])
-        return reply, thinking, intent, path, clarifications
+
+    latency_ms = (__import__('time').time() - start_time) * 1000
+
+    # 记录 Trace
+    engine = get_learning_engine()
+    retrieval_docs = []
+    retrieval_scores = []
+    for ev in state.evidence:
+        for d in ev.documents:
+            retrieval_docs.append(d.get("path", ""))
+        if ev.score:
+            retrieval_scores.append(ev.score)
+
+    trace_id = engine.record_trace(
+        user_query=message,
+        answer=reply,
+        conversation_id=conversation_id,
+        intent=intent,
+        route=path,
+        thinking=thinking,
+        clarifications=clarifications,
+        retrieval_docs=retrieval_docs,
+        retrieval_scores=retrieval_scores,
+        latency_ms=round(latency_ms, 2),
+    )
+    engine.increment_trace_count()
+
+    return reply, thinking, intent, path, clarifications, trace_id
 
 
 class ChatStore:
@@ -193,8 +234,7 @@ class ChatStore:
 
     def save(self, conv: dict):
         conv["updated_at"] = datetime.now().isoformat(timespec="seconds")
-        with open(self._path(conv["id"]), "w", encoding="utf-8") as f:
-            json.dump(conv, f, ensure_ascii=False, indent=2)
+        atomic_write_json(self._path(conv["id"]), conv)
 
     def delete(self, conv_id: str) -> bool:
         path = self._path(conv_id)
@@ -253,7 +293,7 @@ def chat(req: ChatIn):
                              "thinking": [], "timestamp": datetime.now().isoformat(timespec="seconds")})
 
     try:
-        reply, thinking, intent, path, clarifications = run_message(message)
+        reply, thinking, intent, path, clarifications, trace_id = run_message(message, conv["id"])
     except Exception as e:
         traceback.print_exc()
         reply = f"处理请求时发生错误: {e}"
@@ -261,9 +301,11 @@ def chat(req: ChatIn):
         intent = ""
         path = ""
         clarifications = []
+        trace_id = ""
 
     conv["messages"].append({"role": "assistant", "content": reply,
-                             "thinking": thinking, "timestamp": datetime.now().isoformat(timespec="seconds")})
+                             "thinking": thinking, "timestamp": datetime.now().isoformat(timespec="seconds"),
+                             "trace_id": trace_id})
     store.save(conv)
 
     return {
@@ -274,6 +316,7 @@ def chat(req: ChatIn):
         "intent": intent,
         "path": path,
         "clarifications": clarifications,
+        "trace_id": trace_id,
     }
 
 
@@ -317,6 +360,154 @@ def health():
         info["system"] = "error"
         info["error"] = str(e)
     return info
+
+
+# ----------------------------------------------------------- 持续学习 API
+class FeedbackIn(BaseModel):
+    trace_id: str
+    feedback: str  # "positive" / "negative"
+
+
+class LabelIn(BaseModel):
+    trace_id: str
+    expected_intent: str = ""
+    expected_route: str = ""
+    failure_type: str = ""
+    notes: str = ""
+
+
+class EvalSetIn(BaseModel):
+    trace_id: str
+    split: str  # "train" / "validation" / "test" / "challenge"
+    label: str = ""
+
+
+class VersionIn(BaseModel):
+    version_name: str
+    description: str = ""
+    config: dict = None
+
+
+@app.post("/api/feedback")
+def submit_feedback(req: FeedbackIn):
+    engine = get_learning_engine()
+    ok = engine.update_feedback(req.trace_id, req.feedback)
+    if not ok:
+        return JSONResponse({"error": "trace 不存在"}, status_code=404)
+    return {"status": "ok", "trace_id": req.trace_id, "feedback": req.feedback}
+
+
+@app.post("/api/learning/label")
+def submit_label(req: LabelIn):
+    """人工标注：为 trace 添加期望意图/路由/失败类型。"""
+    engine = get_learning_engine()
+    trace = engine.get_trace(req.trace_id)
+    if not trace:
+        return JSONResponse({"error": "trace 不存在"}, status_code=404)
+
+    trace_path = str(engine.TRACES_DIR if hasattr(engine, 'TRACES_DIR') else '') + f"/{req.trace_id}.json"
+    from continuous_learning import TRACES_DIR
+    trace_path = TRACES_DIR / f"{req.trace_id}.json"
+    if not trace_path.exists():
+        return JSONResponse({"error": "trace 不存在"}, status_code=404)
+
+    with open(trace_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    data["human_label"] = {
+        "expected_intent": req.expected_intent,
+        "expected_route": req.expected_route,
+        "failure_type": req.failure_type,
+        "notes": req.notes,
+    }
+    atomic_write_json(trace_path, data)
+
+    return {"status": "ok"}
+
+
+@app.post("/api/learning/eval-set")
+def add_to_eval_set(req: EvalSetIn):
+    """将 trace 加入评估集。"""
+    engine = get_learning_engine()
+    try:
+        split = EvalSplit(req.split)
+    except ValueError:
+        return JSONResponse({"error": f"无效的 split: {req.split}，可选: train/validation/test/challenge"}, status_code=400)
+    engine.add_to_eval_set(req.trace_id, split, req.label)
+    return {"status": "ok", "split": split.value}
+
+
+@app.get("/api/learning/stats")
+def get_learning_stats():
+    """获取持续学习统计数据。"""
+    engine = get_learning_engine()
+    return engine.get_stats()
+
+
+@app.get("/api/learning/failures")
+def get_failures(limit: int = 50):
+    """获取失败案例列表。"""
+    engine = get_learning_engine()
+    return {"failures": engine.get_failure_cases(limit=limit)}
+
+
+@app.get("/api/learning/traces")
+def get_traces(limit: int = 100):
+    """获取 trace 列表。"""
+    engine = get_learning_engine()
+    return {"traces": engine.get_traces(limit=limit)}
+
+
+@app.get("/api/learning/traces/{trace_id}")
+def get_trace(trace_id: str):
+    """获取单条 trace 详情。"""
+    engine = get_learning_engine()
+    trace = engine.get_trace(trace_id)
+    if not trace:
+        return JSONResponse({"error": "trace 不存在"}, status_code=404)
+    return trace
+
+
+@app.get("/api/learning/clusters")
+def get_failure_clusters():
+    """获取失败案例聚类。"""
+    engine = get_learning_engine()
+    clusters = engine.cluster_failures()
+    result = {}
+    for k, v in clusters.items():
+        result[k] = {"count": len(v), "query": v[0].get("user_query", ""), "trace_ids": [m["trace_id"] for m in v]}
+    return {"clusters": result}
+
+
+@app.post("/api/learning/dedup")
+def dedup_failures():
+    """去重失败案例。"""
+    engine = get_learning_engine()
+    removed = engine.deduplicate()
+    return {"removed": removed}
+
+
+@app.post("/api/learning/version")
+def create_version(req: VersionIn):
+    """创建优化版本。"""
+    engine = get_learning_engine()
+    vid = engine.create_version(req.version_name, req.description, req.config)
+    return {"version_id": vid}
+
+
+@app.get("/api/learning/versions")
+def list_versions():
+    """列出所有版本。"""
+    engine = get_learning_engine()
+    return {"versions": engine.list_versions()}
+
+
+@app.get("/api/learning/export")
+def export_failures():
+    """导出失败案例。"""
+    engine = get_learning_engine()
+    path = engine.export_failures()
+    return {"export_path": path}
 
 
 if __name__ == "__main__":
