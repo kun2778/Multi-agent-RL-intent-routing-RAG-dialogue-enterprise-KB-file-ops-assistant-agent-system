@@ -1,0 +1,4 @@
+# 回归 gate 的集合指纹对行尾敏感：强制 LF，避免 autocrlf 在不同机器上
+# 改写内容导致同一个集合算出不同 sha256。
+eval/regression/regression.jsonl text eol=lf
+eval/regression/baseline.json text eol=lf

@@ -24,6 +24,7 @@ import sys
 import tempfile
 import threading
 import time
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -476,6 +477,29 @@ def test_regression_ensure_set_stable_hash():
     s2, h2 = ensure_regression_set()
     assert h1 == h2, "同一磁盘集合两次读取哈希必须一致"
     assert len(s1) == len(s2) and h1
+
+
+def test_sha256_ignores_line_endings():
+    """同一份回归集在 CRLF checkout 下必须算出同一指纹。
+
+    core.autocrlf 会在 Windows 把文件改成 CRLF；指纹若对原始字节哈希，
+    同一集合在两台机器上会得到不同 sha256，gate 把机器差异当成篡改。
+    """
+    from regression_gate import _sha256_file
+
+    lf = tmp_path("set_lf.jsonl")
+    crlf = tmp_path("set_crlf.jsonl")
+    with open(lf, "wb") as fh:
+        fh.write('{"text":"a","label":"q"}\n{"text":"b","label":"q"}\n'.encode("utf-8"))
+    with open(crlf, "wb") as fh:
+        fh.write('{"text":"a","label":"q"}\r\n{"text":"b","label":"q"}\r\n'.encode("utf-8"))
+    assert _sha256_file(Path(lf)) == _sha256_file(Path(crlf))
+
+    # 内容真的不同 → 指纹必须不同（不能因为归一化而失去区分度）
+    diff = tmp_path("set_diff.jsonl")
+    with open(diff, "wb") as fh:
+        fh.write('{"text":"c","label":"q"}\n'.encode("utf-8"))
+    assert _sha256_file(Path(lf)) != _sha256_file(Path(diff))
 
 
 def test_regression_check_flags_regression():

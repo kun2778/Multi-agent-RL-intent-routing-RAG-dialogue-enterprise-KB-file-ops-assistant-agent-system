@@ -150,10 +150,22 @@ class GateResult:
 
 # ================================================================ 固定回归集
 def _sha256_file(path: Path) -> str:
+    """回归集内容指纹。
+
+    按**归一化行尾**哈希：``core.autocrlf`` 会在 checkout 时把文件改成 CRLF，
+    若直接对原始字节取 sha256，同一份集合在 Windows / Linux 上会得到不同指纹，
+    gate 就会把「机器差异」误判成「集合被篡改」（本地 PASS、换台机器 FAIL）。
+    """
     h = hashlib.sha256()
+    pending = b""   # 处理跨 chunk 的 \r|\n 边界
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(65536), b""):
-            h.update(chunk)
+            data = pending + chunk
+            pending = b""
+            if data.endswith(b"\r"):
+                data, pending = data[:-1], b"\r"
+            h.update(data.replace(b"\r\n", b"\n"))
+    h.update(pending)
     return h.hexdigest()
 
 
