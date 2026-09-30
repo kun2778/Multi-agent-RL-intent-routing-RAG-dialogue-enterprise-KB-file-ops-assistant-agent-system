@@ -250,39 +250,48 @@ def apply_readonly_guard(query: str, intent: IntentType
 # ================================================================
 # 五、路由表
 # ================================================================
+#: 意图 → 处理路径。用模块级常量 + ``.get`` 兜底：
+#: 原实现是函数内的 ``routing_map[intent]`` 硬索引，而
+#: ``query_routing_path`` 用的是 ``.get(...)`` —— 两处口径不一致，
+#: 将来给 IntentType 加一个新成员就会在路由处 KeyError（线上才炸）。
+#: ``test_route_maps_cover_every_member`` 会在 CI 上强制两表覆盖全部成员，
+#: 所以兜底分支不会掩盖「忘了登记新意图」这件事。
+ROUTING_MAP: Dict[IntentType, RoutingPath] = {
+    IntentType.ADD_FILE: RoutingPath.FILE_ADD,
+    IntentType.DELETE_FILE: RoutingPath.FILE_DELETE,
+    IntentType.MODIFY_FILE: RoutingPath.FILE_MODIFY,
+    IntentType.REFACTOR: RoutingPath.FILE_REFACTOR,
+    IntentType.QUERY: RoutingPath.SINGLE_VECTOR,
+    IntentType.DEEP_SEARCH: RoutingPath.DEEP_SEARCH,
+    IntentType.VAGUE: RoutingPath.CLARIFICATION,
+    IntentType.FILE_ANALYSIS: RoutingPath.FILE_ANALYSIS,
+    IntentType.FILE_SCAN: RoutingPath.FILE_SCAN,
+    IntentType.REPORT_GENERATE: RoutingPath.REPORT_GENERATE,
+    IntentType.FILENAME_QUERY: RoutingPath.FILENAME_QUERY,
+}
+
+QUERY_ROUTING_MAP: Dict[QuerySubIntent, RoutingPath] = {
+    QuerySubIntent.QUERY_METADATA: RoutingPath.QUERY_METADATA,
+    QuerySubIntent.QUERY_CONTENT: RoutingPath.QUERY_CONTENT,
+    QuerySubIntent.QUERY_OCR: RoutingPath.QUERY_OCR,
+    QuerySubIntent.QUERY_SUMMARY: RoutingPath.QUERY_SUMMARY,
+    QuerySubIntent.QUERY_TRANSLATE: RoutingPath.QUERY_TRANSLATE,
+    QuerySubIntent.QUERY_EXTRACT: RoutingPath.QUERY_EXTRACT,
+    QuerySubIntent.QUERY_SEARCH: RoutingPath.SINGLE_VECTOR,
+    QuerySubIntent.QUERY_SYSTEM: RoutingPath.QUERY_SYSTEM,
+    QuerySubIntent.QUERY_OTHER: RoutingPath.SINGLE_VECTOR,
+    QuerySubIntent.QUERY_FILE_SCAN: RoutingPath.FILE_SCAN,
+    QuerySubIntent.QUERY_FILE_ANALYZE: RoutingPath.FILE_ANALYSIS,
+    QuerySubIntent.QUERY_READONLY_REPORT: RoutingPath.REPORT_GENERATE,
+}
+
+
 def route_intent(intent: IntentType) -> RoutingPath:
-    routing_map = {
-        IntentType.ADD_FILE: RoutingPath.FILE_ADD,
-        IntentType.DELETE_FILE: RoutingPath.FILE_DELETE,
-        IntentType.MODIFY_FILE: RoutingPath.FILE_MODIFY,
-        IntentType.REFACTOR: RoutingPath.FILE_REFACTOR,
-        IntentType.QUERY: RoutingPath.SINGLE_VECTOR,
-        IntentType.DEEP_SEARCH: RoutingPath.DEEP_SEARCH,
-        IntentType.VAGUE: RoutingPath.CLARIFICATION,
-        IntentType.FILE_ANALYSIS: RoutingPath.FILE_ANALYSIS,
-        IntentType.FILE_SCAN: RoutingPath.FILE_SCAN,
-        IntentType.REPORT_GENERATE: RoutingPath.REPORT_GENERATE,
-        IntentType.FILENAME_QUERY: RoutingPath.FILENAME_QUERY,
-    }
-    return routing_map[intent]
+    return ROUTING_MAP.get(intent, RoutingPath.SINGLE_VECTOR)
 
 
 def query_routing_path(sub_intent: QuerySubIntent) -> RoutingPath:
-    routing_map = {
-        QuerySubIntent.QUERY_METADATA: RoutingPath.QUERY_METADATA,
-        QuerySubIntent.QUERY_CONTENT: RoutingPath.QUERY_CONTENT,
-        QuerySubIntent.QUERY_OCR: RoutingPath.QUERY_OCR,
-        QuerySubIntent.QUERY_SUMMARY: RoutingPath.QUERY_SUMMARY,
-        QuerySubIntent.QUERY_TRANSLATE: RoutingPath.QUERY_TRANSLATE,
-        QuerySubIntent.QUERY_EXTRACT: RoutingPath.QUERY_EXTRACT,
-        QuerySubIntent.QUERY_SEARCH: RoutingPath.SINGLE_VECTOR,
-        QuerySubIntent.QUERY_SYSTEM: RoutingPath.QUERY_SYSTEM,
-        QuerySubIntent.QUERY_OTHER: RoutingPath.SINGLE_VECTOR,
-        QuerySubIntent.QUERY_FILE_SCAN: RoutingPath.FILE_SCAN,
-        QuerySubIntent.QUERY_FILE_ANALYZE: RoutingPath.FILE_ANALYSIS,
-        QuerySubIntent.QUERY_READONLY_REPORT: RoutingPath.REPORT_GENERATE,
-    }
-    return routing_map.get(sub_intent, RoutingPath.SINGLE_VECTOR)
+    return QUERY_ROUTING_MAP.get(sub_intent, RoutingPath.SINGLE_VECTOR)
 
 
 def intent_label(intent: IntentType) -> str:

@@ -1348,8 +1348,6 @@ class MetaAgent:
         action, logprob, _, probs = self.subintent_agent.act(
             obs, explore=not getattr(self, "deterministic", False))
         sub = self.subintent_agent.action_map[int(action)]
-        if self.single_cross_vote and self.single_voter is not None:
-            pass
         self._pending["subintent"] = {
             "obs": obs, "ctx": self._central_context(query, self._cur_state, {}),
             "action": int(action), "logprob": logprob, "value": 0.0, "opp_pred": -1,
@@ -1825,10 +1823,31 @@ class MetaAgent:
 #  11. 工厂
 # ================================================================
 def create_marl_agent() -> MetaAgent:
-    """完整 MARL Agent（启用单 Agent 交叉路，构成 6 路投票）。"""
-    return MetaAgent(single_cross_vote=True)
+    """完整 MARL Agent（启用单 Agent 交叉路，构成 6 路投票）。
+
+    构造后校验防回环不变式：交叉路里的 AgentRL 必须 ``marl_vote=False``。
+    若它也开第 6 路，就会出现 marl → agent_rl → marl → agent_rl 的
+    互相嵌套（agent_rl.get_marl_voter 侧只靠惰性单例兜底），
+    这里直接抛错，不让回环配置进到线上。
+    """
+    agent = MetaAgent(single_cross_vote=True)
+    inner = agent.single_voter
+    if inner is not None and getattr(inner, "marl_vote", True):
+        raise RuntimeError(
+            "构造回环：交叉路的 AgentRL 仍开着 marl_vote，"
+            "会再次回头构造第 6 路投票器（agent_rl ↔ marl_agent 相互嵌套）。")
+    return agent
 
 
 def create_marl_voter() -> MetaAgent:
-    """第 6 路投票器（只用策略委员会投票，不建单 Agent 交叉路 → 避免回环构造）。"""
-    return MetaAgent(single_cross_vote=False)
+    """第 6 路投票器（只用策略委员会投票，不建单 Agent 交叉路 → 避免回环构造）。
+
+    ``single_cross_vote=False`` 是防回环的硬不变式：它一旦为 True，
+    投票器内部会再造一个 AgentRL，而该 AgentRL 若又开 marl_vote 就构成
+    构造回环。此处显式断言，改破即在构造期报错。
+    """
+    agent = MetaAgent(single_cross_vote=False)
+    if agent.single_cross_vote or agent.single_voter is not None:
+        raise RuntimeError(
+            "构造回环：第 6 路投票器不得内嵌单 Agent 交叉路。")
+    return agent

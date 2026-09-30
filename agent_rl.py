@@ -81,7 +81,12 @@ MARL_VOTE_WEIGHT_NO_LLM = 0.78  # 无 LLM 时提升为强兜底
 
 _MARL_VOTER = None
 _MARL_VOTER_FAILED = False
-_MARL_VOTER_LOCK = threading.Lock()
+# 可重入：第 6 路构造过程中若再次回到本函数（回环），必须能重新拿到锁
+# 才有机会查下面的 _MARL_VOTER_BUILDING 并安全退出；普通 Lock 会直接死锁。
+_MARL_VOTER_LOCK = threading.RLock()
+#: 构造进行中标记：重入时说明出现了 agent_rl → marl_agent → agent_rl 的
+#: 构造回环，此时返回 None（放弃第 6 路）而不是递归构造下去。
+_MARL_VOTER_BUILDING = False
 
 
 def get_marl_voter():
@@ -89,19 +94,31 @@ def get_marl_voter():
 
     返回 marl_agent.MetaAgent(single_cross_vote=False) 或 None（初始化失败，
     缓存失败结果避免反复构造）。调用方必须 try/except 包裹 vote() 调用。
+
+    防回环：``create_marl_voter`` 必须是 ``single_cross_vote=False`` 的
+    MetaAgent（它内部不会再造 AgentRL）；万一将来有人改破这条不变式，
+    重入检测会在这里返回 None，把构造回环降级成「第 6 路不可用」，
+    而不是无限递归 / 死锁。
     """
-    global _MARL_VOTER, _MARL_VOTER_FAILED
+    global _MARL_VOTER, _MARL_VOTER_FAILED, _MARL_VOTER_BUILDING
     with _MARL_VOTER_LOCK:
+        if _MARL_VOTER_BUILDING:
+            # 构造回环：外层正在建第 6 路，本次调用放弃本路
+            print("  [MARL] 检测到第 6 路构造回环，本次返回 None（防递归）。")
+            return None
         if _MARL_VOTER is not None:
             return _MARL_VOTER
         if _MARL_VOTER_FAILED:
             return None
+        _MARL_VOTER_BUILDING = True
         try:
             from marl_agent import create_marl_voter
             _MARL_VOTER = create_marl_voter()
         except Exception as e:
             _MARL_VOTER_FAILED = True
             print(f"  [MARL] 第 6 路投票器初始化失败({e})，该路不可用。")
+        finally:
+            _MARL_VOTER_BUILDING = False
         return _MARL_VOTER
 
 

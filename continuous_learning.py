@@ -54,6 +54,45 @@ def ensure_learning_dirs():
         d.mkdir(parents=True, exist_ok=True)
 
 
+#: 旧失败记录无法还原当时架构时使用的兜底值（与 _record_failure 的
+#: ``trace.agent or AGENT_TYPE or "unknown"`` 保持同一套口径）
+LEGACY_AGENT_UNKNOWN = "unknown"
+
+
+def backfill_failure_agent(directory: Optional[Path] = None,
+                           default_agent: Optional[str] = None) -> int:
+    """给存量 ``learning/failures/*.json`` 补上 ``agent`` 字段（幂等）。
+
+    失败样本池 agent_rl / marl 共用，新版写入带 ``agent``，旧数据没有 ——
+    缺字段的记录既不能按架构过滤统计，也无法回流到对应架构
+    （badcase_replay 只能把它们当不兼容记录跳过）。
+
+    旧记录不猜架构：归因、路由、意图标签在两套架构里同名，
+    猜错会把 A 架构的坏样本记到 B 头上。因此按
+    ``显式传入 > 环境变量 AGENT_TYPE > "unknown"`` 落值，
+    让「不可归因」本身显式可见，而不是留下缺失键。
+    """
+    target = Path(directory) if directory is not None else FAILURE_DIR
+    if not target.is_dir():
+        return 0
+    value = default_agent or os.environ.get("AGENT_TYPE") or LEGACY_AGENT_UNKNOWN
+    patched = 0
+    for path in sorted(target.glob("*.json")):
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                record = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(record, dict) or record.get("agent"):
+            continue
+        record["agent"] = value
+        atomic_write_json(path, record)
+        patched += 1
+    if patched:
+        print(f"  [学习] 存量失败记录补 agent 字段: {patched} 条（值={value}）")
+    return patched
+
+
 # ---------- 失败类型枚举 ----------
 class FailureType(str, Enum):
     INTENT_CLASSIFICATION_ERROR = "intent_classification_error"
@@ -174,6 +213,8 @@ class ContinuousLearningEngine:
 
     def __init__(self):
         ensure_learning_dirs()
+        # 存量失败记录一次性补 agent 字段（幂等，只写缺失的）
+        backfill_failure_agent()
         self._trace_counter = 0
         self._load_counter()
 

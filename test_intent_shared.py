@@ -358,6 +358,28 @@ def test_state_vector_success_count_not_double_counted():
     print("[OK] get_state_vector 不再重复计数成功操作")
 
 
+def test_route_maps_cover_every_member():
+    """两张路由表必须覆盖全部枚举成员，否则就掉进 .get 兜底。
+
+    旧实现 ``route_intent`` 用 ``routing_map[intent]`` 硬索引，
+    ``query_routing_path`` 用 ``.get(...)`` —— 两处口径不一致，
+    将来给 IntentType 加新成员会在线上直接 KeyError。现在两表都走
+    ``.get``，但**覆盖缺口必须在测试里显式失败**，不能被兜底悄悄吞掉。
+    """
+    from agent_state import QuerySubIntent, RoutingPath
+
+    missing = [m.name for m in IntentType if m not in intent_shared.ROUTING_MAP]
+    assert not missing, f"IntentType 成员没有登记路由（会被兜底吞掉）: {missing}"
+
+    missing_sub = [m.name for m in QuerySubIntent
+                   if m not in intent_shared.QUERY_ROUTING_MAP]
+    assert not missing_sub, f"QuerySubIntent 成员没有登记路由: {missing_sub}"
+
+    for m in IntentType:
+        assert isinstance(intent_shared.route_intent(m), RoutingPath)
+    print("[OK] 路由表覆盖全部枚举成员（新增成员会在 CI 上被点名）")
+
+
 def run_all_tests():
     print("\n" + "#" * 70)
     print("  intent_shared 共享语义测试")
@@ -380,6 +402,7 @@ def run_all_tests():
     test_trace_and_failure_records_carry_agent_attribution()
     test_intent_label_is_a_single_implementation()
     test_state_vector_success_count_not_double_counted()
+    test_route_maps_cover_every_member()
     return True
 
 
