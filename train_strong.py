@@ -25,6 +25,7 @@ except Exception:
 
 from agent_rl import AgentRL, DEFAULT_MODEL_PATH
 from agent_state import AgentState, IntentType
+from intent_shared import eval_pool, train_pool, train_reward
 
 
 LLM_DISTILL_LABELS = {
@@ -82,10 +83,11 @@ LLM_DISTILL_LABELS = {
 
 
 def eval_accuracy(agent, rounds: int = 40) -> dict:
-    """模板准确率（有偏上限）。"""
+    """模板准确率 —— 只跑留出模板（训练阶段不可见），否则训练集=测试集。"""
     acc = {}
     with torch.no_grad():
-        for task, templates in agent.TASK_TEMPLATES.items():
+        for task, all_templates in agent.TASK_TEMPLATES.items():
+            templates = eval_pool(all_templates)
             ok = 0
             for _ in range(rounds):
                 f = random.choice(agent.SAMPLE_FILES)
@@ -186,7 +188,9 @@ def main():
         task = random.choice(templates_list)
         f = random.choice(files)
         g = random.choice([x for x in files if x != f])
-        query = random.choice(agent.TASK_TEMPLATES[task]).format(f=f, g=g, c=agent.SAMPLE_CONTENT)
+        # 只在训练池采样（评估走 eval_accuracy 的留出池）
+        query = random.choice(train_pool(agent.TASK_TEMPLATES[task])).format(
+            f=f, g=g, c=agent.SAMPLE_CONTENT)
 
         stub = AgentState()
         stub.increment_round()
@@ -200,20 +204,21 @@ def main():
                 action = q.argmax().item()
 
         correct = agent.reverse_map[task]
-        reward = 5.0 if action == correct else -2.0
-        done = action == correct
-        if done:
-            reward += 10.0
+        is_correct = action == correct
+        reward = train_reward(is_correct)
+        # 单步自博弈：一步即一个 episode，next_state 与 state 相同，
+        # done=False 会退化成「用同一个状态 bootstrap 自己」的 TD。
+        done = True
 
         agent.store_experience(vec, action, reward, vec, done)
         agent.train_step()
 
-        # Engram 写入: 高置信度时积累经验
-        if done and hasattr(agent, 'engram'):
+        # Engram 写入: 只在答对（正例）时积累经验
+        if is_correct and hasattr(agent, 'engram'):
             with torch.no_grad():
                 feat_tensor = torch.FloatTensor(vec).unsqueeze(0)
                 cls_hidden = agent.q_network.transformer(feat_tensor)[:, 0]
-                conf_tensor = torch.FloatTensor([[1.0 if done else 0.5]])
+                conf_tensor = torch.FloatTensor([[1.0]])
                 agent.engram.write(cls_hidden, feat_tensor, conf_tensor)
 
         if step % log_every == 0:

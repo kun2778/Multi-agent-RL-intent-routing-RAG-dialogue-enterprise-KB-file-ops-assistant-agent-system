@@ -55,14 +55,19 @@ class AgentRLSystem:
         回流失败只打日志，绝不阻塞系统启动。
         """
         try:
-            from badcase_replay import push_bad_cases
+            from badcase_replay import push_bad_cases, replay_status
             pushed, skipped = push_bad_cases(self.agent_rl)
+            pending = replay_status().get("bad_cases_pending", 0)
         except Exception as exc:
             print(f"  [回流] bad case 回流失败（不影响启动）: {exc}")
             return
         if pushed:
             print(f"  [回流] bad case → replay buffer: +{pushed} 条 "
                   f"(跳过 {skipped}，buffer={len(self.agent_rl.replay_buffer)})")
+        elif pending:
+            # 显式暴露：以前这类情况被逐条 except 静默吞掉，看起来像「回流正常」
+            print(f"  [回流] 有 {pending} 条待回流样本未写入 buffer"
+                  f"（已跳过 {skipped} 条，当前架构={self.agent_type}）")
 
     def process_query(self, query: str) -> str:
         """处理单条对话框输入，返回最终结果字符串。"""
@@ -112,6 +117,7 @@ class AgentRLSystem:
             retrieval_docs=retrieval_docs,
             retrieval_scores=retrieval_scores,
             latency_ms=round(latency_ms, 2),
+            agent=self.agent_type,
         )
         self.learning_engine.increment_trace_count()
 

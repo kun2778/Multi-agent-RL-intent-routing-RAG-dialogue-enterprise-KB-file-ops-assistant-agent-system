@@ -59,7 +59,7 @@ import torch.optim as optim
 
 from agent_state import (
     IntentType, QuerySubIntent, SlotType, AgentState,
-    SHORT_LABELS, QUERY_SUBINTENT_LABELS
+    QUERY_SUBINTENT_LABELS
 )
 from query_rewriter import QueryRewriter
 from llm_intent import LLMIntentClassifier
@@ -69,6 +69,34 @@ from transformer_arch import (
     TransformerSlotExtractionNetwork, EngramConditionalMemory,
 )
 from agent_rl import AgentRL, round_reward, should_clarify
+from intent_shared import (
+    SemanticFeatureExtractor,
+    aggregate_votes,
+    apply_readonly_guard,
+    intent_label,
+    query_routing_path as _shared_query_routing_path,
+    route_intent as _shared_route_intent,
+    semantic_conflict_guard as _shared_conflict_guard,
+    train_reward as _shared_train_reward,
+    train_pool as _shared_train_pool,
+    eval_pool as _shared_eval_pool,
+    vote_confidence as _shared_vote_confidence,
+    # 关键词表：唯一定义在 intent_shared，rule_keywords 不再各写一份
+    SEARCH_KEYWORDS,
+    DELETE_KEYWORDS,
+    DEEP_ANALYSIS_KEYWORDS,
+    ADD_FILE_KEYWORDS,
+    MODIFY_FILE_KEYWORDS,
+    REFACTOR_KEYWORDS,
+    ANALYSIS_KEYWORDS,
+    SCAN_KEYWORDS,
+    REPORT_KEYWORDS,
+    CONFIDENCE_THRESHOLD as SHARED_CONFIDENCE_THRESHOLD,
+    ENGRAM_MIN_MARGIN as SHARED_ENGRAM_MIN_MARGIN,
+    TASK_TEMPLATES as SHARED_TASK_TEMPLATES,
+    SAMPLE_FILES as SHARED_SAMPLE_FILES,
+    SAMPLE_CONTENT as SHARED_SAMPLE_CONTENT,
+)
 
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 DEFAULT_MARL_MODEL_PATH = os.path.join(MODEL_DIR, "marl_agents.pth")
@@ -571,18 +599,21 @@ class IntentPolicy(PolicyAgent):
         _init_network(self.q_network, hp.init_scheme, hp.init_gain, hp.seed)
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=hp.lr, eps=1e-5)
 
-        # 规则兜底（与单 Agent 的关键词规则同源，但权重由 MetaAgent 学习）
+        # 规则兜底（与单 Agent 的关键词规则同源，但权重由 MetaAgent 学习）。
+        # 关键词表来自 intent_shared —— 以前两份逐字副本各自演化，只改一边必漂移。
+        # 字典顺序即同分时的优先级，保持历史顺序（DEEP_SEARCH 在 FILE_ANALYSIS 前）。
         self.rule_keywords = {
-            IntentType.ADD_FILE: ["添加", "新增", "创建", "新建", "写入", "保存", "生成", "add", "create"],
-            IntentType.DELETE_FILE: ["删除", "移除", "清理", "删掉", "remove", "delete"],
-            IntentType.MODIFY_FILE: ["修改", "更新", "编辑", "改成", "modify", "edit", "update"],
-            IntentType.REFACTOR: ["整理", "重构", "归类", "归档", "重命名", "refactor", "organize"],
-            IntentType.QUERY: ["查", "找", "搜索", "查询", "检索", "怎么", "什么", "search", "find",
-                                "识别", "截屏", "截图", "ocr", "文字", "输出", "提取", "读取", "查看"],
-            IntentType.DEEP_SEARCH: ["对比", "比较", "分析", "差异", "综合", "总结", "analyze"],
-            IntentType.FILE_ANALYSIS: ["分析", "审查", "检查", "诊断", "评估", "只读分析"],
-            IntentType.FILE_SCAN: ["扫描", "遍历", "列举", "统计", "文件扫描"],
-            IntentType.REPORT_GENERATE: ["报告", "生成报告", "输出报告", "汇总"],
+            IntentType.ADD_FILE: list(ADD_FILE_KEYWORDS),
+            IntentType.DELETE_FILE: list(DELETE_KEYWORDS),
+            IntentType.MODIFY_FILE: list(MODIFY_FILE_KEYWORDS),
+            IntentType.REFACTOR: list(REFACTOR_KEYWORDS),
+            IntentType.QUERY: list(SEARCH_KEYWORDS),
+            IntentType.DEEP_SEARCH: list(DEEP_ANALYSIS_KEYWORDS),
+            IntentType.FILE_ANALYSIS: list(ANALYSIS_KEYWORDS) + ["只读分析"],
+            IntentType.FILE_SCAN: list(SCAN_KEYWORDS) + ["文件扫描"],
+            IntentType.REPORT_GENERATE: list(REPORT_KEYWORDS) + ["汇总"],
+            # FILENAME_QUERY 保留短 token（最近/最新/recent…）：护栏用的是
+            # 短语级 FILENAME_QUERY_KEYWORDS，两者粒度不同，直接替换会漏匹配。
             IntentType.FILENAME_QUERY: ["最近", "最新", "文件名搜索", "搜索文件名",
                                          "查找文件", "recent", "latest", "newly"],
         }
@@ -775,77 +806,11 @@ class SlotPolicy(PolicyAgent):
 # ================================================================
 #  8. 训练模板（训练与联盟评估共用）
 # ================================================================
-TASK_TEMPLATES: Dict[IntentType, List[str]] = {
-    IntentType.ADD_FILE: [
-        "添加文件 {f} 内容为 {c}", "创建新文件 {f}", "写入 {f} 保存内容: {c}",
-        "新建一个 {f}", "帮我写一个 {f}", "把以下内容保存到 {f}",
-        "生成文件 {f}", "帮我创建 {f} 然后写入内容",
-    ],
-    IntentType.DELETE_FILE: [
-        "删除文件 {f}", "移除 {f}", "清理文件 {f}",
-        "把 {f} 删掉", "帮我删除 {f}", "移除掉 {f}",
-        "清理掉 {f}", "把 {f} 从项目中删去",
-    ],
-    IntentType.MODIFY_FILE: [
-        "修改文件 {f} 内容为 {c}", "更新 {f} 改成 {c}",
-        "编辑 {f}", "帮我改一下 {f}", "把 {f} 的内容替换一下",
-        "更新 {f} 的内容", "修改 {f} 中的配置",
-    ],
-    IntentType.REFACTOR: [
-        "整理文件夹", "重构项目结构", "把文件按类型分类归档",
-        "帮我整理一下目录", "重命名文件", "移动文件到对应文件夹",
-        "代码重构", "优化项目结构",
-    ],
-    IntentType.QUERY: [
-        "查询文件 {f} 里写了什么", "搜索 {f} 的内容", "{f} 存在吗",
-        "帮我找一下 {f}", "查看 {f}", "{f} 里面有什么",
-        "搜索强化学习", "查一下这个文件", "找到红警3的启动程序在哪里",
-    ],
-    IntentType.DEEP_SEARCH: [
-        "对比分析 {f} 和 {g}", "深度分析 {f} 的趋势与影响",
-        "综合分析 {f} 和 {g} 的差异", "帮我比较一下 {f} 和 {g}",
-        "分析 {f} 的优缺点", "深入研究 {f} 的发展方向",
-        "评估 {f} 和 {g} 的区别",
-    ],
-    IntentType.VAGUE: [
-        "你好", "嗨", "在吗", "你是谁", "帮我一下",
-        "请问", "嗯", "好的", "谢谢", "哈哈",
-        "今天天气怎么样", "讲个笑话", "随便聊聊",
-        "你能做什么", "介绍一下自己", "无聊",
-        "123", "test", "hello", "hi", "hey",
-        "你是AI吗", "我有个问题", "等等",
-    ],
-    IntentType.FILE_ANALYSIS: [
-        "只读分析 {f} 的代码质量", "审查 {f} 的结构",
-        "检查 {f} 中的问题", "诊断 {f} 的性能",
-        "评估 {f} 的复杂度", "分析 {f} 的依赖关系",
-        "深度分析 {f} 的架构", "审查项目的代码规范",
-    ],
-    IntentType.FILE_SCAN: [
-        "扫描项目中的所有文件", "遍历目录列出所有文件",
-        "统计项目文件数量", "列举 {f} 里的内容",
-        "扫描代码中的TODO标记", "检查项目结构",
-        "列出所有配置文件", "扫描重复文件",
-    ],
-    IntentType.REPORT_GENERATE: [
-        "生成代码审查报告", "输出项目分析报告",
-        "写一份 {f} 的总结报告", "创建JSON格式的分析结果",
-        "汇总生成CSV报告", "生成项目质量报告",
-        "输出代码复杂度报告", "生成依赖分析报告",
-    ],
-    IntentType.FILENAME_QUERY: [
-        "为我找到最近添加的文件名", "最近修改的文件有哪些",
-        "查找最近创建的文件", "最近编辑过的文件名",
-        "最新添加的文件有哪些", "最近保存的文件名列表",
-        "搜索最近的txt文件", "最近修改的py文件有哪些",
-        "找到本周创建的文件", "最近一天修改的文件",
-        "recently modified files", "find newly created files",
-        "最新的文件名有哪些", "最近操作过的文件",
-    ],
-}
-SAMPLE_FILES = ["notes.txt", "config.yaml", "main.py", "app.json",
-                "report.md", "readme.md", "data.csv"]
-SAMPLE_CONTENT = "这是一段用于演示的文档内容。"
+# 训练模板 / 演示样本：唯一副本在 intent_shared（原来与 agent_rl 各存一份，
+# 已发生漂移：FILE_SCAN 与 REPORT_GENERATE 各有 1 条模板不一致）。
+TASK_TEMPLATES = SHARED_TASK_TEMPLATES
+SAMPLE_FILES = SHARED_SAMPLE_FILES
+SAMPLE_CONTENT = SHARED_SAMPLE_CONTENT
 
 # 6 路投票的源名称（与 agent_rl.AgentRL 的 6 路一一对应但内容不同）
 SOURCE_NAMES = ("llm", "policy", "league", "rule", "retrieval", "single")
@@ -858,7 +823,7 @@ class MetaAgent:
     """多 Agent 协调器：6 路仲裁 + MAPPO 联盟训练 + 集成策略推断。"""
 
     FEATURE_DIM = OBS_DIM
-    CONFIDENCE_THRESHOLD = 0.65
+    CONFIDENCE_THRESHOLD = SHARED_CONFIDENCE_THRESHOLD  # 与 agent_rl 同源，见 intent_shared
 
     def __init__(self, model_path: str = None, single_cross_vote: bool = True):
         # ---- 个体策略（不同初始化 / 超参数 / 观测）----
@@ -872,7 +837,7 @@ class MetaAgent:
         }
 
         # ---- 共享组件 ----
-        self.feature_extractor = _SemanticFeatureExtractor()
+        self.feature_extractor = SemanticFeatureExtractor()
         self.query_rewriter = QueryRewriter()
         self.llm_classifier = LLMIntentClassifier()
         self.intent_retriever = get_intent_retriever()
@@ -906,6 +871,8 @@ class MetaAgent:
         self.reward_scale = RunningScale()
         self.replay_buffer: List[Transition] = []
         self.training_step = 0
+        # 回归 gate / 评测用：True 时 classify_intent 关闭策略采样，结果可复现
+        self.deterministic = False
         self._steps_since_update = 0
         self._distill_bank: deque = deque(maxlen=512)
         self.epsilon = 0.30              # 与单 Agent (0.3/0.02/0.998) 刻意不同
@@ -927,6 +894,16 @@ class MetaAgent:
         self._auto_load()
 
     # ---------------------------------------------------------- 持久化
+    @property
+    def action_map(self) -> Dict[int, IntentType]:
+        """与 agent_rl.AgentRL 同名的 动作→意图 映射（接口对齐，便于互换）。"""
+        return self.intent_agent.action_map
+
+    @property
+    def reverse_map(self) -> Dict[IntentType, int]:
+        """与 agent_rl.AgentRL 同名的 意图→动作 映射（接口对齐，便于互换）。"""
+        return self.intent_agent.reverse_map
+
     @property
     def single_voter(self) -> Optional[AgentRL]:
         if self._single_voter is None and self.single_cross_vote:
@@ -1162,13 +1139,20 @@ class MetaAgent:
         return sorted(self._last_source_scores)
 
     def classify_intent(self, query: str, state: AgentState,
-                        use_llm: bool = True) -> Tuple[IntentType, float]:
-        """6 路仲裁：LLM / 当前策略 / 联盟策略 / 规则 / 检索 / 单Agent神经路。"""
+                        use_llm: bool = True,
+                        explore: Optional[bool] = None) -> Tuple[IntentType, float]:
+        """6 路仲裁：LLM / 当前策略 / 联盟策略 / 规则 / 检索 / 单Agent神经路。
+
+        ``explore=None`` 时按 ``self.deterministic`` 决定（回归 gate 会把它
+        置 True 关掉策略采样，否则同一样本两次跑出不同结果、gate 不可复现）。
+        """
+        if explore is None:
+            explore = not getattr(self, "deterministic", False)
         self.last_llm_target = None
         self.last_llm_sub_intent = None
         self.last_llm_slots = {}
         return self._arbitrate(query, state, use_llm=use_llm,
-                              include_single=self.single_cross_vote, explore=True)
+                              include_single=self.single_cross_vote, explore=explore)
 
     def _arbitrate(self, query: str, state: AgentState, use_llm: bool,
                    include_single: bool, explore: bool,
@@ -1261,19 +1245,15 @@ class MetaAgent:
             except Exception:
                 pass
 
-        # --- 聚合：加权得分 / 每意图取均值 ---
-        scores: Dict[IntentType, Dict] = {}
+        # --- 聚合：score = Σ各路得分 / n**0.75（共识增强，修复旧实现 Σ/n 的
+        # 「共识惩罚」）；排序与置信度共用这一个数。---
         source_scores: Dict[str, Tuple[IntentType, float]] = {}
+        scores = aggregate_votes(candidates)
         for intent, score, source in candidates:
-            scores.setdefault(intent, {"score": 0.0, "sources": []})
-            scores[intent]["score"] += score
-            scores[intent]["sources"].append(source)
             source_scores[source] = (intent, score)
-        for v in scores.values():
-            v["score"] /= len(v["sources"])
 
         final_intent = max(scores, key=lambda k: scores[k]["score"])
-        final_conf = float(scores[final_intent]["score"])
+        final_conf = _shared_vote_confidence(scores, final_intent)
 
         ranked = sorted((v["score"] for v in scores.values()), reverse=True)
         stats["margin"] = float(ranked[0] - ranked[1]) if len(ranked) > 1 else float(ranked[0])
@@ -1330,56 +1310,20 @@ class MetaAgent:
                 probs = F.softmax(enhanced_q, dim=-1).squeeze(0).numpy()
                 eng_action = int(probs.argmax())
                 eng_conf = float(probs[eng_action])
-                if eng_conf > conf + 0.1:
+                if eng_conf > conf + SHARED_ENGRAM_MIN_MARGIN:
                     return self.intent_agent.action_map[eng_action], eng_conf
         except Exception:
             pass
         return intent, conf
 
     def _semantic_conflict_guard(self, query: str, proposed: IntentType,
-                                  votes: Dict[IntentType, Dict]) -> IntentType:
-        """语义冲突护栏（只读/查询类关键词下禁止落进写操作意图）。"""
-        q = query.lower().strip()
+                                  votes: Dict[IntentType, Dict] = None) -> IntentType:
+        """语义冲突护栏 —— 委托 intent_shared（与 agent_rl 完全同一实现）。
 
-        search_kws = ["找", "查", "搜索", "查询", "检索", "怎么", "什么", "哪里",
-                       "search", "find", "查看", "看看", "在哪", "定位",
-                       "识别", "截屏", "截图", "ocr", "文字", "输出", "提取", "读取"]
-        has_search = any(kw in q for kw in search_kws)
-        delete_kws = ["删除", "移除", "清理", "删掉", "干掉", "remove", "delete"]
-        has_delete_kw = any(kw in q for kw in delete_kws)
-
-        if has_search and not has_delete_kw:
-            if proposed in {IntentType.DELETE_FILE, IntentType.REFACTOR,
-                            IntentType.ADD_FILE, IntentType.MODIFY_FILE}:
-                return IntentType.QUERY
-
-        readonly_kws = ["只读", "不修改", "不移动", "不删除", "不重命名", "不覆盖"]
-        has_readonly = any(kw in q for kw in readonly_kws)
-        analysis_kws = ["分析", "审查", "检查", "诊断", "评估"]
-        has_analysis = any(kw in q for kw in analysis_kws)
-        scan_kws = ["扫描", "遍历", "列举", "统计"]
-        has_scan = any(kw in q for kw in scan_kws)
-        report_kws = ["报告", "生成报告", "输出报告"]
-        has_report = any(kw in q for kw in report_kws)
-
-        if has_readonly or has_analysis or has_scan or has_report:
-            if proposed in {IntentType.ADD_FILE, IntentType.DELETE_FILE,
-                            IntentType.MODIFY_FILE, IntentType.REFACTOR}:
-                if has_analysis:
-                    return IntentType.FILE_ANALYSIS
-                if has_scan:
-                    return IntentType.FILE_SCAN
-                if has_report:
-                    return IntentType.REPORT_GENERATE
-                return IntentType.QUERY
-
-        filename_query_kws = ["最近添加的文件", "最近修改的文件", "最近创建的文件",
-                              "最近的文件", "最新文件", "文件名搜索", "搜索文件名"]
-        if any(kw in q for kw in filename_query_kws):
-            if proposed in {IntentType.DELETE_FILE, IntentType.MODIFY_FILE,
-                            IntentType.ADD_FILE, IntentType.REFACTOR}:
-                return IntentType.FILENAME_QUERY
-        return proposed
+        旧副本与单体各持一份关键词表，已漂移成两套口径（本侧含 OCR/提取词、
+        单体侧含「搜」；护栏覆盖意图范围也不一致），现收敛为唯一定义。
+        """
+        return _shared_conflict_guard(query, proposed, votes)
 
     # ---------------------------------------------------------- 子任务
     def get_sub_intent(self, query: str, features: np.ndarray = None) -> QuerySubIntent:
@@ -1389,8 +1333,20 @@ class MetaAgent:
                 self._last_votes.get("single") is not None) else 0.5
             return rule_result
 
+        # 规则未命中时与单 Agent 同源：先跑确定性计分器（同
+        # agent_rl 的 LLM→scorer 链路），只有它也给不出信号
+        # （QUERY_OTHER）才落到神经采样。否则 LLM 缺位的在线
+        # 路径会从 12 类里随机抽子意图 —— 坏例「为我找到异环…
+        # exe文件」被抽成 query_ocr，OCR 因无图失败拿 -2.0。
+        scored = self.query_rewriter.classify_query_subintent(query)
+        if scored != QuerySubIntent.QUERY_OTHER:
+            self._last_local["subintent"] = 1.0 if (
+                self._last_votes.get("single") is not None) else 0.5
+            return scored
+
         obs = self._obs("subintent", query, self._cur_state)
-        action, logprob, _, probs = self.subintent_agent.act(obs, explore=True)
+        action, logprob, _, probs = self.subintent_agent.act(
+            obs, explore=not getattr(self, "deterministic", False))
         sub = self.subintent_agent.action_map[int(action)]
         if self.single_cross_vote and self.single_voter is not None:
             pass
@@ -1403,7 +1359,8 @@ class MetaAgent:
 
     def get_slots(self, query: str, features: np.ndarray = None) -> Dict[str, Any]:
         obs = self._obs("slot", query, self._cur_state)
-        action, logprob, _, _ = self.slot_agent.act(obs, explore=True)
+        action, logprob, _, _ = self.slot_agent.act(
+            obs, explore=not getattr(self, "deterministic", False))
         neural_slots = self.slot_agent.predict(obs)
         rule_slots = self.slot_agent.rule_extract(query)
 
@@ -1442,6 +1399,15 @@ class MetaAgent:
         intent, confidence = self.classify_intent(query, state)
         routing_path = self._get_routing_path(intent)
 
+        # 只读安全守卫（共享实现；旧版只有单体有这层，MARL 缺失导致同一句话
+        # 两个 agent 行为不一致，现补齐为两侧一致）
+        pre_guard_intent = intent
+        intent, readonly_downgraded = apply_readonly_guard(query, intent)
+        if readonly_downgraded:
+            print(f"  [安全守卫] 检测到只读请求，将 {pre_guard_intent.value} 降级为查询")
+            routing_path = self._get_routing_path(intent)
+            confidence = max(confidence, 0.5)
+
         sub_intent = None
         if intent == IntentType.QUERY:
             if self.last_llm_sub_intent:
@@ -1474,39 +1440,12 @@ class MetaAgent:
         return intent, routing_path, confidence, clarifications
 
     def _get_routing_path(self, intent: IntentType):
-        from agent_state import RoutingPath
-        routing_map = {
-            IntentType.ADD_FILE: RoutingPath.FILE_ADD,
-            IntentType.DELETE_FILE: RoutingPath.FILE_DELETE,
-            IntentType.MODIFY_FILE: RoutingPath.FILE_MODIFY,
-            IntentType.REFACTOR: RoutingPath.FILE_REFACTOR,
-            IntentType.QUERY: RoutingPath.SINGLE_VECTOR,
-            IntentType.DEEP_SEARCH: RoutingPath.DEEP_SEARCH,
-            IntentType.VAGUE: RoutingPath.CLARIFICATION,
-            IntentType.FILE_ANALYSIS: RoutingPath.FILE_ANALYSIS,
-            IntentType.FILE_SCAN: RoutingPath.FILE_SCAN,
-            IntentType.REPORT_GENERATE: RoutingPath.REPORT_GENERATE,
-            IntentType.FILENAME_QUERY: RoutingPath.FILENAME_QUERY,
-        }
-        return routing_map[intent]
+        """意图 → 路由路径（唯一实现在 intent_shared.route_intent）。"""
+        return _shared_route_intent(intent)
 
     def _get_query_routing_path(self, sub_intent: QuerySubIntent):
-        from agent_state import RoutingPath
-        routing_map = {
-            QuerySubIntent.QUERY_METADATA: RoutingPath.QUERY_METADATA,
-            QuerySubIntent.QUERY_CONTENT: RoutingPath.QUERY_CONTENT,
-            QuerySubIntent.QUERY_OCR: RoutingPath.QUERY_OCR,
-            QuerySubIntent.QUERY_SUMMARY: RoutingPath.QUERY_SUMMARY,
-            QuerySubIntent.QUERY_TRANSLATE: RoutingPath.QUERY_TRANSLATE,
-            QuerySubIntent.QUERY_EXTRACT: RoutingPath.QUERY_EXTRACT,
-            QuerySubIntent.QUERY_SEARCH: RoutingPath.SINGLE_VECTOR,
-            QuerySubIntent.QUERY_SYSTEM: RoutingPath.QUERY_SYSTEM,
-            QuerySubIntent.QUERY_OTHER: RoutingPath.SINGLE_VECTOR,
-            QuerySubIntent.QUERY_FILE_SCAN: RoutingPath.FILE_SCAN,
-            QuerySubIntent.QUERY_FILE_ANALYZE: RoutingPath.FILE_ANALYSIS,
-            QuerySubIntent.QUERY_READONLY_REPORT: RoutingPath.REPORT_GENERATE,
-        }
-        return routing_map.get(sub_intent, RoutingPath.SINGLE_VECTOR)
+        """子意图 → 路由路径（唯一实现在 intent_shared.query_routing_path）。"""
+        return _shared_query_routing_path(sub_intent)
 
     # ---------------------------------------------------------- 信用分配
     def _marginal_contribution(self) -> float:
@@ -1748,7 +1687,8 @@ class MetaAgent:
         """用模板集评估当前策略 vs 联盟各成员（head-to-head）。"""
         cases: List[Tuple[str, IntentType]] = []
         for intent, templates in TASK_TEMPLATES.items():
-            for tpl in templates[:5]:
+            # 只用留出模板评估联盟晋升，否则「用训练样本选冠军」→ 过拟合
+            for tpl in _shared_eval_pool(templates)[:5]:
                 f = random.choice(SAMPLE_FILES)
                 g = random.choice([x for x in SAMPLE_FILES if x != f])
                 cases.append((tpl.format(f=f, g=g, c=SAMPLE_CONTENT), intent))
@@ -1834,7 +1774,8 @@ class MetaAgent:
             intents = list(TASK_TEMPLATES.keys())
             random.shuffle(intents)
             for intent in intents:
-                for template in TASK_TEMPLATES[intent]:
+                # 训练只用训练池；联盟评估用留出池，避免训练集=测试集
+                for template in _shared_train_pool(TASK_TEMPLATES[intent]):
                     f = random.choice(SAMPLE_FILES)
                     g = random.choice([x for x in SAMPLE_FILES if x != f])
                     query = template.format(f=f, g=g, c=SAMPLE_CONTENT)
@@ -1850,7 +1791,9 @@ class MetaAgent:
                     state.add_dialog(query)
                     predicted, _, confidence, _ = self.process(query, state)
 
-                    reward = 5.0 if predicted == intent else -2.0
+                    # 与 agent_rl / train_strong 共用同一奖励公式
+                    #（旧版答对 = 5，单体答对 = 15，跨架构曲线差 3 倍不可比）
+                    reward = _shared_train_reward(predicted == intent)
                     total_reward += reward
                     self.learn(reward, state, done=True)
                     self.query_opponent.update(arm, reward)
@@ -1870,55 +1813,13 @@ class MetaAgent:
         return round_reward(outcome, AgentRL.REWARD_MAP, state)
 
     def get_intent_label(self, intent: IntentType) -> str:
-        return SHORT_LABELS.get(intent, intent.value)
+        """意图 → 展示用短标签（唯一实现在 intent_shared.intent_label）。"""
+        return intent_label(intent)
 
 
 # ================================================================
-#  10. 语义特征提取器（与单 Agent 同构，观测基在 ObservationEncoder 处分化）
+#  10. 语义特征提取器 —— 见 intent_shared.SemanticFeatureExtractor（唯一副本）
 # ================================================================
-class _SemanticFeatureExtractor:
-    """字符 n-gram 哈希 + 固定随机投影 → 256 维稠密向量。"""
-
-    HASH_DIM = 2048
-    PROJ_DIM = SEM_DIM
-
-    def __init__(self):
-        import hashlib
-        self._hashlib = hashlib
-        rng = np.random.RandomState(42)
-        self._proj = rng.randn(self.HASH_DIM, self.PROJ_DIM).astype(np.float32) * (
-            1.0 / np.sqrt(self.HASH_DIM))
-
-    def _char_ngrams(self, text: str) -> List[str]:
-        text = text.lower().strip()
-        ngrams = []
-        for n in (1, 2, 3):
-            for i in range(len(text) - n + 1):
-                ngrams.append(text[i:i + n])
-        return ngrams
-
-    def _hash_to_bucket(self, s: str) -> int:
-        h = int(self._hashlib.md5(s.encode("utf-8")).hexdigest(), 16)
-        return h % self.HASH_DIM
-
-    def extract(self, query: str) -> np.ndarray:
-        ngrams = self._char_ngrams(query)
-        if not ngrams:
-            return np.zeros(self.PROJ_DIM, dtype=np.float32)
-        vec = np.zeros(self.HASH_DIM, dtype=np.float32)
-        for ng in ngrams:
-            vec[self._hash_to_bucket(ng)] += 1.0
-        tf = np.log1p(vec)
-        proj = tf @ self._proj
-        norm = np.linalg.norm(proj)
-        if norm > 0:
-            proj /= norm
-        return proj.astype(np.float32)
-
-    @property
-    def dim(self) -> int:
-        return self.PROJ_DIM
-
 
 # ================================================================
 #  11. 工厂

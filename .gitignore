@@ -44,3 +44,11 @@ config/secrets.yaml
 
 # Persisted RL model checkpoints (large binary files)
 models/
+
+# Generated analysis / gate reports (每次跑 analyze.py / duplicate_gate.py 产生，
+# CI 里作为 artifact 上传，不入库)
+analysis_result.json
+duplicate-findings.csv
+duplicate-gate.json
+gate-report.json
+gate-report-marl.json

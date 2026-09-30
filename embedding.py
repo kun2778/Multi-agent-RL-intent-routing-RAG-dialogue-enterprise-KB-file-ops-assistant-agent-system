@@ -98,8 +98,11 @@ def _stable_hash_vector(text: str, dimension: int) -> np.ndarray:
     while len(buf) < need:
         buf += hashlib.sha256(seed + counter.to_bytes(4, "little")).digest()
         counter += 1
+    # need = dimension * 4 字节：4 字节一组压成 1 个分量，
+    # 否则 frombuffer(uint8) 会产出 dimension*4 个元素（形状不一致导致
+    # np.array([...]) 报 inhomogeneous shape）。
     raw = np.frombuffer(bytes(buf[:need]), dtype=np.uint8).astype(np.float32)
-    vec = raw / 127.5 - 1.0
+    vec = raw.reshape(dimension, 4).mean(axis=1) / 127.5 - 1.0
     norm = np.linalg.norm(vec)
     if norm > 0:
         vec = vec / norm
@@ -111,7 +114,8 @@ class TfidfEmbedder:
 
     # 见 SentenceTransformerEmbedder.schema_version 的说明。
     # v2：vocab 改为 sorted() 编号 + OOV 改用 _stable_hash_vector（跨进程确定性）。
-    schema_version = "tfidf-v2"
+    # v3：修复 _stable_hash_vector 返回 dimension*4 维（OOV/空文本形状不一致）。
+    schema_version = "tfidf-v3"
 
     def __init__(self, dimension: int = 128):
         self.dimension = dimension

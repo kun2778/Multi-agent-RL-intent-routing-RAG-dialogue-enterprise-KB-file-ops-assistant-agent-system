@@ -10,6 +10,7 @@ from evidence_evaluator import TerminationPolicy
 from file_corpus import FileCorpus
 from system_file_finder import SystemFileFinder
 from ocr_handler import OCRHandler, create_ocr_handler
+from intent_shared import SEARCH_KEYWORDS, DELETE_KEYWORDS
 
 
 class Router:
@@ -130,7 +131,13 @@ class Router:
                 self._route_file_operation(state, intent, query)
         elif intent == IntentType.QUERY:
             sub_intent = state.current_sub_intent
-            if sub_intent == QuerySubIntent.QUERY_OCR:
+            if sub_intent == QuerySubIntent.QUERY_OCR and not self._ocr_warranted(
+                    state, query):
+                print("  [OCR守卫] 未检测到图片路径/OCR语义，OCR 子意图降级为事实查询")
+                state.current_sub_intent = QuerySubIntent.QUERY_OTHER
+                state.routing_path = RoutingPath.SINGLE_VECTOR
+                self._route_fact_query(state, query)
+            elif sub_intent == QuerySubIntent.QUERY_OCR:
                 self._route_ocr(state, query)
             elif sub_intent == QuerySubIntent.QUERY_SYSTEM:
                 self._route_system_find(state, query)
@@ -172,14 +179,32 @@ class Router:
         return state
 
     # ------------------------------------------------------------- 操作分支
+    def _ocr_warranted(self, state: AgentState, query: str) -> bool:
+        """OCR 分支必须有图像证据，否则子意图可能是误采样/误判。
+
+        三类正证据（满足其一即可路由 OCR）：
+          1) 槽位里真的有图片路径；
+          2) 查询显式提到 OCR 动作词（识别/ocr/文字识别）；
+          3) 查询含图像关键词（截屏/图片/...，query_rewriter.IMAGE_KEYWORDS）。
+        证据缺失时返回 False，由调用方降级到事实查询，
+        避免「无图 → OCR失败 → insufficient_evidence(-2.0)」的空转。
+        """
+        if state.slots.get(SlotType.IMAGE_PATH.value):
+            return True
+        q = (query or "").lower()
+        if any(kw in q for kw in ("识别", "ocr", "文字识别")):
+            return True
+        return self.agent_rl.query_rewriter.detect_ocr_need(query)
+
     def _is_search_query(self, query: str) -> bool:
-        """判断查询是否包含搜索/查找类关键词。"""
+        """判断查询是否包含搜索/查找类关键词。
+
+        用 intent_shared 的统一词表：这里与 agent_rl/marl 的查询判定必须同口径，
+        否则「单体认为是查询、Router 认为不是」会让安全拦截失效。
+        """
         q = query.lower().strip()
-        search_kws = ["找", "查", "搜索", "查询", "检索", "怎么", "什么", "哪里",
-                       "search", "find", "查看", "看看", "在哪", "定位"]
-        delete_kws = ["删除", "移除", "清理", "删掉", "干掉", "remove", "delete"]
-        has_search = any(kw in q for kw in search_kws)
-        has_delete = any(kw in q for kw in delete_kws)
+        has_search = any(kw in q for kw in SEARCH_KEYWORDS)
+        has_delete = any(kw in q for kw in DELETE_KEYWORDS)
         return has_search and not has_delete
 
     def _route_file_operation(self, state: AgentState, intent: IntentType, query: str):

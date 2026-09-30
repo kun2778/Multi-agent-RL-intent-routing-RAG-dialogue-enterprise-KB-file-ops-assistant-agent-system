@@ -30,7 +30,39 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-from agent_state import IntentType, QuerySubIntent, RoutingPath, AgentState, SHORT_LABELS, QUERY_SUBINTENT_LABELS
+from agent_state import IntentType, QuerySubIntent, RoutingPath, AgentState, QUERY_SUBINTENT_LABELS
+from intent_shared import (
+    SemanticFeatureExtractor,
+    aggregate_votes,
+    apply_readonly_guard,
+    detect_readonly_guard,
+    intent_label,
+    query_routing_path as _shared_query_routing_path,
+    route_intent as _shared_route_intent,
+    semantic_conflict_guard as _shared_conflict_guard,
+    train_reward as _shared_train_reward,
+    train_pool as _shared_train_pool,
+    eval_pool as _shared_eval_pool,
+    vote_confidence as _shared_vote_confidence,
+    # 关键词表：唯一定义在 intent_shared，_safe_fallback 不再各写一份
+    SEARCH_KEYWORDS,
+    DELETE_KEYWORDS,
+    DEEP_ANALYSIS_KEYWORDS,
+    ADD_FILE_KEYWORDS,
+    MODIFY_FILE_KEYWORDS,
+    REFACTOR_KEYWORDS,
+    FILENAME_QUERY_KEYWORDS,
+    WRITE_KEYWORDS,
+    ANALYSIS_GATE_KEYWORDS,
+    FORBIDDEN_MODIFY_KEYWORDS,
+    SCAN_KEYWORDS,
+    REPORT_KEYWORDS,
+    CONFIDENCE_THRESHOLD as SHARED_CONFIDENCE_THRESHOLD,
+    ENGRAM_MIN_MARGIN as SHARED_ENGRAM_MIN_MARGIN,
+    TASK_TEMPLATES as SHARED_TASK_TEMPLATES,
+    SAMPLE_FILES as SHARED_SAMPLE_FILES,
+    SAMPLE_CONTENT as SHARED_SAMPLE_CONTENT,
+)
 from atomic_io import read_json as read_json_file
 from query_rewriter import QueryRewriter
 from llm_intent import LLMIntentClassifier
@@ -74,57 +106,8 @@ def get_marl_voter():
 
 
 # ================================================================
-#  1. 语义特征提取器 — 字符 n-gram 哈希 + 随机投影
+#  1. 语义特征提取器 — 见 intent_shared.SemanticFeatureExtractor（唯一副本）
 # ================================================================
-class SemanticFeatureExtractor:
-    """中文/英文字符 n-gram 哈希 + 随机投影 → 256 维稠密向量。
-
-    原理:
-      - 提取 unigram + bigram + trigram（字符级）
-      - 每个 n-gram 哈希到 HASH_DIM 维稀疏桶
-      - 乘以固定的随机投影矩阵 → 256 维稠密向量
-      - 无需训练，无需外部依赖，启动即用
-    """
-
-    HASH_DIM = 2048
-    PROJ_DIM = 256
-
-    def __init__(self):
-        rng = np.random.RandomState(42)
-        self._proj = rng.randn(self.HASH_DIM, self.PROJ_DIM).astype(np.float32) * (1.0 / math.sqrt(self.HASH_DIM))
-
-    def _char_ngrams(self, text: str) -> List[str]:
-        text = text.lower().strip()
-        ngrams = []
-        for n in (1, 2, 3):
-            for i in range(len(text) - n + 1):
-                ngrams.append(text[i:i + n])
-        return ngrams
-
-    def _hash_to_bucket(self, s: str) -> int:
-        h = int(hashlib.md5(s.encode("utf-8")).hexdigest(), 16)
-        return h % self.HASH_DIM
-
-    def extract(self, query: str) -> np.ndarray:
-        ngrams = self._char_ngrams(query)
-        if not ngrams:
-            return np.zeros(self.PROJ_DIM, dtype=np.float32)
-
-        vec = np.zeros(self.HASH_DIM, dtype=np.float32)
-        for ng in ngrams:
-            vec[self._hash_to_bucket(ng)] += 1.0
-
-        tf = np.log1p(vec)
-        proj = tf @ self._proj
-        norm = np.linalg.norm(proj)
-        if norm > 0:
-            proj /= norm
-        return proj.astype(np.float32)
-
-    @property
-    def dim(self) -> int:
-        return self.PROJ_DIM
-
 
 # ================================================================
 #  2. Dueling + Double DQN
@@ -493,12 +476,12 @@ class AgentRL:
         IntentType.FILENAME_QUERY,
     ]
     FEATURE_DIM = 268
-    CONFIDENCE_THRESHOLD = 0.65  # 投票置信度下限；澄清与否由 confidence_threshold(k) 期望决策决定
+    CONFIDENCE_THRESHOLD = SHARED_CONFIDENCE_THRESHOLD  # 与 marl_agent 同源，见 intent_shared
 
     # Engram 外部记忆的补充权重（详见 classify_intent 中的调用处）：
     # 记忆只做补充，不构成独立决策方，改判必须比主体判断高出 ENGRAM_MIN_MARGIN。
     ENGRAM_WEIGHT = 0.25
-    ENGRAM_MIN_MARGIN = 0.10
+    ENGRAM_MIN_MARGIN = SHARED_ENGRAM_MIN_MARGIN
 
     # 奖励默认表：marl_agent.MetaAgent.compute_reward 直接引用本表，
     # 任何新增奖励键只在此处添加一处。
@@ -515,76 +498,11 @@ class AgentRL:
         "timeout": -3.0, "evidence_sufficient": 8.0,
     }
 
-    TASK_TEMPLATES: Dict[IntentType, List[str]] = {
-        IntentType.ADD_FILE: [
-            "添加文件 {f} 内容为 {c}", "创建新文件 {f}", "写入 {f} 保存内容: {c}",
-            "新建一个 {f}", "帮我写一个 {f}", "把以下内容保存到 {f}",
-            "生成文件 {f}", "帮我创建 {f} 然后写入内容",
-        ],
-        IntentType.DELETE_FILE: [
-            "删除文件 {f}", "移除 {f}", "清理文件 {f}",
-            "把 {f} 删掉", "帮我删除 {f}", "移除掉 {f}",
-            "清理掉 {f}", "把 {f} 从项目中删去",
-        ],
-        IntentType.MODIFY_FILE: [
-            "修改文件 {f} 内容为 {c}", "更新 {f} 改成 {c}",
-            "编辑 {f}", "帮我改一下 {f}", "把 {f} 的内容替换一下",
-            "更新 {f} 的内容", "修改 {f} 中的配置",
-        ],
-        IntentType.REFACTOR: [
-            "整理文件夹", "重构项目结构", "把文件按类型分类归档",
-            "帮我整理一下目录", "重命名文件", "移动文件到对应文件夹",
-            "代码重构", "优化项目结构",
-        ],
-        IntentType.QUERY: [
-            "查询文件 {f} 里写了什么", "搜索 {f} 的内容", "{f} 存在吗",
-            "帮我找一下 {f}", "查看 {f}", "{f} 里面有什么",
-            "搜索强化学习", "查一下这个文件", "找到红警3的启动程序在哪里",
-        ],
-        IntentType.DEEP_SEARCH: [
-            "对比分析 {f} 和 {g}", "深度分析 {f} 的趋势与影响",
-            "综合分析 {f} 和 {g} 的差异", "帮我比较一下 {f} 和 {g}",
-            "分析 {f} 的优缺点", "深入研究 {f} 的发展方向",
-            "评估 {f} 和 {g} 的区别",
-        ],
-        IntentType.VAGUE: [
-            "你好", "嗨", "在吗", "你是谁", "帮我一下",
-            "请问", "嗯", "好的", "谢谢", "哈哈",
-            "今天天气怎么样", "讲个笑话", "随便聊聊",
-            "你能做什么", "介绍一下自己", "无聊",
-            "123", "test", "hello", "hi", "hey",
-            "你是AI吗", "我有个问题", "等等",
-        ],
-        IntentType.FILE_ANALYSIS: [
-            "只读分析 {f} 的代码质量", "审查 {f} 的结构",
-            "检查 {f} 中的问题", "诊断 {f} 的性能",
-            "评估 {f} 的复杂度", "分析 {f} 的依赖关系",
-            "深度分析 {f} 的架构", "审查项目的代码规范",
-        ],
-        IntentType.FILE_SCAN: [
-            "扫描项目中的所有文件", "遍历目录列出所有文件",
-            "统计项目文件数量", "列举所有Python文件",
-            "扫描代码中的TODO标记", "检查项目结构",
-            "列出所有配置文件", "扫描重复文件",
-        ],
-        IntentType.REPORT_GENERATE: [
-            "生成代码审查报告", "输出项目分析报告",
-            "生成Markdown格式的报告", "创建JSON格式的分析结果",
-            "汇总生成CSV报告", "生成项目质量报告",
-            "输出代码复杂度报告", "生成依赖分析报告",
-        ],
-        IntentType.FILENAME_QUERY: [
-            "为我找到最近添加的文件名", "最近修改的文件有哪些",
-            "查找最近创建的文件", "最近编辑过的文件名",
-            "最新添加的文件有哪些", "最近保存的文件名列表",
-            "搜索最近的txt文件", "最近修改的py文件有哪些",
-            "找到本周创建的文件", "最近一天修改的文件",
-            "recently modified files", "find newly created files",
-            "最新的文件名有哪些", "最近操作过的文件",
-        ],
-    }
-    SAMPLE_FILES = ["notes.txt", "config.yaml", "main.py", "app.json", "report.md", "readme.md", "data.csv"]
-    SAMPLE_CONTENT = "这是一段用于演示的文档内容。"
+    # 训练模板 / 演示样本：唯一副本在 intent_shared，两个 agent 共用一份，
+    # 避免复制后各自漂移（marl 侧原有 2 条模板与单体不一致）。
+    TASK_TEMPLATES = SHARED_TASK_TEMPLATES
+    SAMPLE_FILES = SHARED_SAMPLE_FILES
+    SAMPLE_CONTENT = SHARED_SAMPLE_CONTENT
 
     # --- 蒸馏用真实测试样本（不在模板中） ---
     EVAL_REAL_SAMPLES: Dict[str, str] = {
@@ -1036,18 +954,12 @@ class AgentRL:
 
         self.last_sources = list(dict.fromkeys(src for _, _, src in candidates))
 
-        votes: Dict[IntentType, Dict] = {}
-        for intent, score, source in candidates:
-            if intent not in votes:
-                votes[intent] = {"score": 0.0, "sources": []}
-            votes[intent]["score"] += score
-            votes[intent]["sources"].append(source)
-
-        for intent, v in votes.items():
-            v["score"] /= len(v["sources"])
+        # 聚合：score = Σ各路得分 / n**0.75（= 平均质量 × n**0.25，共识增强）。
+        # 旧实现 Σ/n 取均值 → 多一路同向共识反而降分；排序与置信度共用这一个数。
+        votes = aggregate_votes(candidates)
 
         final_intent = max(votes, key=lambda k: votes[k]["score"])
-        final_conf = votes[final_intent]["score"]
+        final_conf = _shared_vote_confidence(votes, final_intent)
 
         # Engram 外部记忆：**补充信号**，不是第七个独立决策方。
         #   - 只在投票置信度低于下限（模型吃不准）时才读取
@@ -1084,57 +996,13 @@ class AgentRL:
         return final_intent, final_conf
 
     def _semantic_conflict_guard(self, query: str, proposed: IntentType,
-                                  votes: Dict[IntentType, Dict]) -> IntentType:
-        """语义冲突护栏：当关键词明确指向查询但模型预测为删除时，强制纠正。"""
-        q = query.lower().strip()
+                                  votes: Dict[IntentType, Dict] = None) -> IntentType:
+        """语义冲突护栏 —— 委托 intent_shared（与 marl_agent 完全同一实现）。
 
-        search_kws = ["搜", "找", "查", "搜索", "查询", "检索", "怎么", "什么", "哪里",
-                       "search", "find", "查看", "看看", "在哪", "定位"]
-        has_search = any(kw in q for kw in search_kws)
-
-        delete_kws = ["删除", "移除", "清理", "删掉", "干掉", "remove", "delete"]
-        has_delete_kw = any(kw in q for kw in delete_kws)
-
-        if has_search and not has_delete_kw:
-            if proposed == IntentType.DELETE_FILE:
-                if "rule" in votes and votes[IntentType.QUERY]["score"] > 0:
-                    return IntentType.QUERY
-                return IntentType.QUERY
-
-        # 只读分析/扫描检测
-        readonly_kws = ["只读", "不修改", "不移动", "不删除", "不重命名", "不覆盖"]
-        has_readonly = any(kw in q for kw in readonly_kws)
-        
-        analysis_kws = ["分析", "审查", "检查", "诊断", "评估"]
-        has_analysis = any(kw in q for kw in analysis_kws)
-        
-        scan_kws = ["扫描", "遍历", "列举", "统计"]
-        has_scan = any(kw in q for kw in scan_kws)
-        
-        report_kws = ["报告", "生成报告", "输出报告"]
-        has_report = any(kw in q for kw in report_kws)
-        
-        if has_readonly or has_analysis or has_scan or has_report:
-            if proposed in {IntentType.ADD_FILE, IntentType.DELETE_FILE, 
-                           IntentType.MODIFY_FILE, IntentType.REFACTOR}:
-                if has_analysis:
-                    return IntentType.FILE_ANALYSIS
-                elif has_scan:
-                    return IntentType.FILE_SCAN
-                elif has_report:
-                    return IntentType.REPORT_GENERATE
-                else:
-                    return IntentType.QUERY
-
-        # 文件名搜索检测
-        filename_query_kws = ["最近添加的文件", "最近修改的文件", "最近创建的文件",
-                               "最近的文件", "最新文件", "文件名搜索", "搜索文件名"]
-        has_filename_query = any(kw in q for kw in filename_query_kws)
-        if has_filename_query:
-            if proposed in {IntentType.DELETE_FILE, IntentType.MODIFY_FILE}:
-                return IntentType.FILENAME_QUERY
-
-        return proposed
+        旧副本只拦 DELETE_FILE、且带一段 ``votes[IntentType.QUERY]["score"]``
+        的 KeyError 风险死分支（两个分支都 return QUERY）；现已收敛到共享模块。
+        """
+        return _shared_conflict_guard(query, proposed, votes)
 
     def _engram_vote(self, features: np.ndarray, final_conf: float) -> Tuple[Optional[IntentType], float]:
         """读取 Engram 外部记忆，返回 (意向, 置信度) 或 (None, 0.0)。
@@ -1170,85 +1038,64 @@ class AgentRL:
         if not q:
             return IntentType.VAGUE
 
+        # 问候语判定必须让位给明确的文件操作指令：模板里常把正文（如「你好」）
+        # 拼进 query —— 「添加文件 notes.txt 内容为 你好」若先命中问候词会被
+        # 误判成 vague，真正意图 add_file 被丢掉。
+        op_kws = WRITE_KEYWORDS
         if any(w in q for w in ["你好", "嗨", "在吗", "你是谁", "hello", "hi", "hey",
                                   "谢谢", "好的", "嗯", "哈哈", "无聊", "讲个笑话",
-                                  "天气", "你是AI", "随便聊", "你能做什么", "介绍自己"]):
+                                  "天气", "你是AI", "随便聊", "你能做什么", "介绍自己"]) \
+                and not any(w in q for w in op_kws):
             return IntentType.VAGUE
         if len(q) <= 2 and not any(c in q for c in "搜索查询删除添加修改"):
             return IntentType.VAGUE
 
-        # 文件分析/扫描/报告检测
-        analysis_kws = ["只读", "扫描", "分析", "报告", "review", "审查",
-                         "不修改", "不移动", "不删除", "不重命名", "不覆盖",
-                         "readonly", "scan", "analysis", "report"]
-        if any(kw in q for kw in analysis_kws):
-            forbidden_kws = ["不修改", "不移动", "不删除", "不重命名", "不覆盖",
-                             "禁止修改", "禁止移动", "禁止删除"]
-            has_forbidden = any(kw in q for kw in forbidden_kws)
-            
+        # 文件分析/扫描/报告检测（闸门词唯一定义在 intent_shared，
+        # 与语义护栏、marl 的 rule_keywords 同口径）
+        if any(kw in q for kw in ANALYSIS_GATE_KEYWORDS):
+            has_forbidden = any(kw in q for kw in FORBIDDEN_MODIFY_KEYWORDS)
+
             if has_forbidden:
                 return IntentType.FILE_ANALYSIS
-            elif any(kw in q for kw in ["扫描", "scan"]):
+            elif any(kw in q for kw in SCAN_KEYWORDS + ("scan",)):
                 return IntentType.FILE_SCAN
-            elif any(kw in q for kw in ["报告", "review", "审查"]):
+            elif any(kw in q for kw in REPORT_KEYWORDS + ("review", "审查")):
                 return IntentType.REPORT_GENERATE
             else:
                 return IntentType.DEEP_SEARCH
 
         # 长指令检测
         if len(q) > 30:
-            if any(kw in q for kw in ["对比", "比较", "分析", "差异", "区别", "vs", "综合", "总结", "趋势", "影响", "评估"]):
+            if any(kw in q for kw in DEEP_ANALYSIS_KEYWORDS):
                 return IntentType.DEEP_SEARCH
-            if any(kw in q for kw in ["查", "找", "搜索", "查询", "检索", "怎么", "什么", "哪里", "search", "find", "查看",
-                                       "识别", "截屏", "截图", "ocr", "文字", "输出", "提取", "读取"]):
+            if any(kw in q for kw in SEARCH_KEYWORDS):
                 return IntentType.QUERY
 
-        if any(w in q for w in ["对比", "比较", "分析", "差异", "区别", "vs", "综合", "总结", "趋势", "影响", "评估"]):
+        if any(w in q for w in DEEP_ANALYSIS_KEYWORDS):
             return IntentType.DEEP_SEARCH
-        if any(w in q for w in ["添加", "新增", "创建", "新建", "写入", "保存", "生成", "add", "create", "new"]):
+        if any(w in q for w in ADD_FILE_KEYWORDS):
             return IntentType.ADD_FILE
-        if any(w in q for w in ["删除", "移除", "清理", "删掉", "remove", "delete"]):
+        if any(w in q for w in DELETE_KEYWORDS):
             return IntentType.DELETE_FILE
-        if any(w in q for w in ["修改", "更新", "编辑", "改成", "modify", "edit", "update"]):
+        if any(w in q for w in MODIFY_FILE_KEYWORDS):
             return IntentType.MODIFY_FILE
-        if any(w in q for w in ["整理", "重构", "归类", "归档", "重命名", "移动",
-                                  "分一下类", "分类", "分类归类", "refactor", "organize"]):
+        if any(w in q for w in REFACTOR_KEYWORDS):
             return IntentType.REFACTOR
-        if any(w in q for w in ["查", "找", "搜索", "查询", "检索", "怎么", "什么", "哪里", "search", "find", "查看",
-                                  "识别", "截屏", "截图", "ocr", "文字", "输出", "提取", "读取"]):
+        if any(w in q for w in SEARCH_KEYWORDS):
             return IntentType.QUERY
-        if any(w in q for w in ["最近添加的文件", "最近修改的文件", "最近创建的文件",
-                                  "最近的文件", "最新文件", "文件名搜索", "搜索文件名"]):
+        if any(w in q for w in FILENAME_QUERY_KEYWORDS):
             return IntentType.FILENAME_QUERY
 
         return IntentType.QUERY
 
     # ---------------------------------------------------------- 路由
     def route(self, intent: IntentType) -> RoutingPath:
-        routing_map = {
-            IntentType.ADD_FILE: RoutingPath.FILE_ADD,
-            IntentType.DELETE_FILE: RoutingPath.FILE_DELETE,
-            IntentType.MODIFY_FILE: RoutingPath.FILE_MODIFY,
-            IntentType.REFACTOR: RoutingPath.FILE_REFACTOR,
-            IntentType.QUERY: RoutingPath.SINGLE_VECTOR,
-            IntentType.DEEP_SEARCH: RoutingPath.DEEP_SEARCH,
-            IntentType.VAGUE: RoutingPath.CLARIFICATION,
-            IntentType.FILE_ANALYSIS: RoutingPath.FILE_ANALYSIS,
-            IntentType.FILE_SCAN: RoutingPath.FILE_SCAN,
-            IntentType.REPORT_GENERATE: RoutingPath.REPORT_GENERATE,
-            IntentType.FILENAME_QUERY: RoutingPath.FILENAME_QUERY,
-        }
-        return routing_map[intent]
+        """意图 → 路由路径（唯一实现在 intent_shared.route_intent）。"""
+        return _shared_route_intent(intent)
 
     def _detect_readonly_guard(self, query: str) -> bool:
-        """检测用户是否明确要求只读操作。"""
-        q = query.lower()
-        readonly_indicators = [
-            "只读", "readonly", "read-only", "不修改", "不移动", "不删除",
-            "不重命名", "不覆盖", "禁止修改", "禁止移动", "禁止删除",
-            "禁止", "不能", "不要", "别动", "别改", "别删"
-        ]
-        return any(ind in q for ind in readonly_indicators)
+        """检测用户是否明确要求只读操作（与 marl_agent 共用同一实现）。"""
+        return detect_readonly_guard(query)
 
     # ---------------------------------------------------------- 奖励
     def compute_reward(self, outcome: str, state: AgentState = None) -> float:
@@ -1515,9 +1362,11 @@ class AgentRL:
             intents = list(self.TASK_TEMPLATES.keys())
             random.shuffle(intents)
             for task in intents:
+                # 训练只用训练池；评估用留出池（见 evaluate），避免训练集=测试集
+                pool = _shared_train_pool(self.TASK_TEMPLATES[task])
                 f = random.choice(self.SAMPLE_FILES)
                 g = random.choice([x for x in self.SAMPLE_FILES if x != f])
-                query = random.choice(self.TASK_TEMPLATES[task]).format(f=f, g=g, c=self.SAMPLE_CONTENT)
+                query = random.choice(pool).format(f=f, g=g, c=self.SAMPLE_CONTENT)
                 stub = AgentState()
                 stub.increment_round()
                 vec = self._extract_features(query, stub)
@@ -1528,10 +1377,10 @@ class AgentRL:
                         q = self.q_network(torch.FloatTensor(vec).unsqueeze(0))
                         action = q.argmax().item()
                 correct = self.reverse_map[task]
-                reward = 5.0 if action == correct else -2.0
-                done = action == correct
-                if done:
-                    reward += 10.0
+                reward = _shared_train_reward(action == correct)
+                # 单步自博弈：一步即一个 episode。旧实现 done=correct，
+                # 答错时 next_state == state 却仍 bootstrap，TD 目标退化。
+                done = True
                 total_reward += reward
                 self.store_experience(vec, action, reward, vec, done)
                 self.train_step()
@@ -1570,7 +1419,9 @@ class AgentRL:
                 }
 
         with torch.no_grad():
-            for task, templates in self.TASK_TEMPLATES.items():
+            for task, all_templates in self.TASK_TEMPLATES.items():
+                # 评估只跑留出模板（训练阶段不可见），否则训练集=测试集
+                templates = _shared_eval_pool(all_templates)
                 ok = 0
                 n_eval = min(40, len(templates) * 5)
                 for _ in range(n_eval):
@@ -1601,16 +1452,13 @@ class AgentRL:
         intent, confidence = self.classify_intent(query, state)
         routing_path = self.route(intent)
 
-        # 只读安全守卫
-        is_readonly_request = self._detect_readonly_guard(query)
-        if is_readonly_request:
-            write_intents = {IntentType.ADD_FILE, IntentType.DELETE_FILE, 
-                            IntentType.MODIFY_FILE, IntentType.REFACTOR}
-            if intent in write_intents:
-                print(f"  [安全守卫] 检测到只读请求，将 {intent.value} 降级为查询")
-                intent = IntentType.QUERY
-                routing_path = self.route(intent)
-                confidence = max(confidence, 0.5)
+        # 只读安全守卫（共享实现，marl_agent.process 同样调用）
+        pre_guard_intent = intent
+        intent, readonly_downgraded = apply_readonly_guard(query, intent)
+        if readonly_downgraded:
+            print(f"  [安全守卫] 检测到只读请求，将 {pre_guard_intent.value} 降级为查询")
+            routing_path = self.route(intent)
+            confidence = max(confidence, 0.5)
 
         sub_intent = None
         if intent == IntentType.QUERY:
@@ -1645,22 +1493,9 @@ class AgentRL:
         return intent, routing_path, confidence, clarifications
 
     def _get_query_routing_path(self, sub_intent: QuerySubIntent) -> RoutingPath:
-        """根据子意图获取路由路径。"""
-        routing_map = {
-            QuerySubIntent.QUERY_METADATA: RoutingPath.QUERY_METADATA,
-            QuerySubIntent.QUERY_CONTENT: RoutingPath.QUERY_CONTENT,
-            QuerySubIntent.QUERY_OCR: RoutingPath.QUERY_OCR,
-            QuerySubIntent.QUERY_SUMMARY: RoutingPath.QUERY_SUMMARY,
-            QuerySubIntent.QUERY_TRANSLATE: RoutingPath.QUERY_TRANSLATE,
-            QuerySubIntent.QUERY_EXTRACT: RoutingPath.QUERY_EXTRACT,
-            QuerySubIntent.QUERY_SEARCH: RoutingPath.SINGLE_VECTOR,
-            QuerySubIntent.QUERY_SYSTEM: RoutingPath.QUERY_SYSTEM,
-            QuerySubIntent.QUERY_OTHER: RoutingPath.SINGLE_VECTOR,
-            QuerySubIntent.QUERY_FILE_SCAN: RoutingPath.FILE_SCAN,
-            QuerySubIntent.QUERY_FILE_ANALYZE: RoutingPath.FILE_ANALYSIS,
-            QuerySubIntent.QUERY_READONLY_REPORT: RoutingPath.REPORT_GENERATE,
-        }
-        return routing_map.get(sub_intent, RoutingPath.SINGLE_VECTOR)
+        """根据子意图获取路由路径（唯一实现在 intent_shared.query_routing_path）。"""
+        return _shared_query_routing_path(sub_intent)
 
     def get_intent_label(self, intent: IntentType) -> str:
-        return SHORT_LABELS.get(intent, intent.value)
+        """意图 → 展示用短标签（唯一实现在 intent_shared.intent_label）。"""
+        return intent_label(intent)

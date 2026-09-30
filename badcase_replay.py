@@ -86,6 +86,11 @@ def _sample_key(query: str, intent: str, source: str) -> str:
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
+def _source_name(record: Dict[str, Any]) -> str:
+    """日志用的样本标识（原始文件名，避免打印已脱敏查询本身）。"""
+    return str(record.get("_source") or record.get("trace_id") or "?")
+
+
 # ================================================================ 读取 bad case
 def load_bad_cases(limit: int = DEFAULT_LIMIT) -> List[Dict[str, Any]]:
     """读取失败案例（新→旧），查询字段已脱敏。"""
@@ -177,6 +182,35 @@ def transitions_for_case(agent, record: Dict[str, Any]
     return transitions
 
 
+# ================================================================ 能力检测
+def replay_capability(agent) -> Tuple[bool, str]:
+    """判断该 agent 是否支持 DQN 式回流，返回 ``(支持与否, 说明)``。
+
+    回流产物是 ``(state_vec, action, reward, next_state_vec, done)`` 五元组，
+    只有 PER buffer（``replay_buffer.push``）能消费。MetaAgent 的
+    ``replay_buffer`` 是裸 list、动作由 MAPPO 策略采样（还带 logprob/value），
+    结构不兼容。
+
+    旧行为：逐条尝试 → 每条都在 ``except Exception: skipped += 1; continue``
+    里被静默吞掉，线上看起来「回流正常」，实际一条都没进 buffer。
+    现在改为入口处一次性判定并**显式报错**。
+    """
+    if agent is None:
+        return False, "agent 为 None"
+    if not hasattr(agent, "reverse_map"):
+        return False, f"{type(agent).__name__} 缺少 reverse_map"
+    buf = getattr(agent, "replay_buffer", None)
+    if not hasattr(buf, "push"):
+        return False, (f"{type(agent).__name__}.replay_buffer 是 "
+                       f"{type(buf).__name__}，没有 push()（MAPPO rollout 结构，"
+                       f"与 DQN 五元组不兼容）")
+    if not hasattr(agent, "train_step"):
+        return False, f"{type(agent).__name__} 缺少 train_step()"
+    if not hasattr(agent, "_extract_features"):
+        return False, f"{type(agent).__name__} 缺少 _extract_features()"
+    return True, ""
+
+
 # ================================================================ 回流入口
 def push_bad_cases(agent, limit: int = DEFAULT_LIMIT,
                    dry_run: bool = False,
@@ -187,6 +221,13 @@ def push_bad_cases(agent, limit: int = DEFAULT_LIMIT,
         (pushed, skipped) —— pushed 为写入的 transition 条数，
         skipped 包含「已回流过」与「无法转换」两类。
     """
+    ok, reason = replay_capability(agent)
+    if not ok:
+        # 显式失败：调用方（main._replay_ingest / CLI）据此打印原因，
+        # 不再让每个样本都各自异常一次然后被静默计数。
+        print(f"  [回流] 跳过整个回流：{reason}")
+        return 0, 0
+
     cases = load_bad_cases(limit)
     if not cases:
         return 0, 0
@@ -206,8 +247,12 @@ def push_bad_cases(agent, limit: int = DEFAULT_LIMIT,
 
         try:
             transitions = transitions_for_case(agent, record)
-        except Exception:
+        except Exception as exc:
+            # 转换是确定性的：同一条记录重扫多少次都会再抛一次，
+            # 因此记账 + 打日志，避免每次启动都重扫同一批坏样本。
+            print(f"  [回流] 记录 {_source_name(record)} 转换失败({exc})，记账跳过")
             skipped += 1
+            new_keys.add(key)
             continue
 
         if not transitions:
@@ -226,8 +271,8 @@ def push_bad_cases(agent, limit: int = DEFAULT_LIMIT,
         if pushed and train:
             try:
                 agent.train_step()
-            except Exception:
-                pass
+            except Exception as exc:
+                print(f"  [回流] 回流后触发 train_step 失败: {exc}")
 
     return pushed, skipped
 

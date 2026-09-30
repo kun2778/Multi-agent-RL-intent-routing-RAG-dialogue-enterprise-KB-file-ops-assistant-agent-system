@@ -177,6 +177,7 @@ def run_message(message: str, conversation_id: str = ""):
         retrieval_docs=retrieval_docs,
         retrieval_scores=retrieval_scores,
         latency_ms=round(latency_ms, 2),
+        agent=getattr(system, "agent_type", ""),
     )
     engine.increment_trace_count()
 

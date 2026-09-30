@@ -11,8 +11,10 @@
    - 追加 ``AgentRL.EVAL_REAL_SAMPLES`` 的模板外真实样本
    - 内容哈希 ``sha256`` 记入基线；回归集被篡改 → gate 直接失败
 
-2. **基线** ``eval/regression/baseline.json``
+2. **基线** ``eval/regression/baseline.json``（单体）/
+   ``eval/regression/baseline_marl.json``（MARL）
    - 记录某次已知良好的 overall / macro / per-intent 准确率 + 回归集哈希 + 阈值
+   - 两种架构各一份：准确率本就不同，共用会互相误判回退
    - 只有显式 ``--update-baseline`` 才会重写
 
 3. **阈值判定 + CI 拦截**
@@ -24,7 +26,8 @@
 
 用法::
 
-    python regression_gate.py                  # 跑 gate（CI 默认行为）
+    python regression_gate.py                  # 跑 gate（CI 默认行为，单体）
+    python regression_gate.py --agent marl     # 跑 MARL 侧 gate
     python regression_gate.py --update-baseline # 重新固化基线（人工触发）
     python regression_gate.py --json           # 机器可读输出
     python regression_gate.py --rebuild-set     # 重建固定回归集（会改哈希）
@@ -55,8 +58,16 @@ from runtime_paths import PROJECT_ROOT
 # 放在受版本控制的目录下，否则 CI 每次 checkout 都拿不到基线。
 GATE_DIR = PROJECT_ROOT / "eval" / "regression"
 REGRESSION_SET_PATH = GATE_DIR / "regression.jsonl"
-BASELINE_PATH = GATE_DIR / "baseline.json"
+BASELINE_PATH = GATE_DIR / "baseline.json"            # 单体 AgentRL 基线
+MARL_BASELINE_PATH = GATE_DIR / "baseline_marl.json"   # MARL MetaAgent 基线
 CORPUS_CSV = PROJECT_ROOT / "intent_corpus.csv"
+
+AGENT_TYPES = ("single", "marl")
+
+
+def baseline_path(agent_type: str = "single") -> Path:
+    """每个架构一份基线：两种策略的准确率本就不同，共用一份会互相误判回退。"""
+    return MARL_BASELINE_PATH if agent_type == "marl" else BASELINE_PATH
 
 PER_LABEL = 12          # 每类从语料库取多少条（文件顺序前 N，确定性）
 TEMPLATE_LABEL_MIN = 6  # 语料库缺失的意图：用固定模板补足到该数量
@@ -136,10 +147,12 @@ class GateResult:
     baseline: Optional[GateMetrics] = None
     thresholds: Optional[GateThresholds] = None
     error: str = ""
+    agent_type: str = "single"
 
     def to_dict(self) -> dict:
         return {
             "passed": self.passed,
+            "agent_type": self.agent_type,
             "reasons": self.reasons,
             "metrics": self.metrics.to_dict() if self.metrics else None,
             "baseline": self.baseline.to_dict() if self.baseline else None,
@@ -286,23 +299,56 @@ def seed_everything(seed: int = 0) -> None:
 
 @contextlib.contextmanager
 def deterministic_mode(agent):
-    """把 AgentRL 切到可复现的推理模式：ε=0、关 LLM、关 MARL、关 dropout。"""
-    saved = (agent.epsilon, agent.marl_vote, agent.llm_classifier)
-    nets = [agent.q_network, agent.classifier]
+    """把 agent 切到可复现的推理模式：ε=0、关 LLM、关交叉投票、关 dropout。
+
+    单体（AgentRL）与 MARL（MetaAgent）属性集不同，这里按能力探测，
+    两个架构都能进入确定性模式 —— 以前只按 AgentRL 写死，MARL 根本进不了 gate。
+    """
+    saved_epsilon = getattr(agent, "epsilon", None)
+    saved_marl_vote = getattr(agent, "marl_vote", None)
+    saved_llm = getattr(agent, "llm_classifier", None)
+    saved_deterministic = getattr(agent, "deterministic", None)
+
+    nets = []
+    for name in ("q_network", "classifier"):
+        net = getattr(agent, name, None)
+        if net is not None:
+            nets.append(net)
+    for role in ("intent_agent", "subintent_agent", "slot_agent"):
+        pa = getattr(agent, role, None)
+        if pa is not None:
+            for name in ("q_network", "critic"):
+                net = getattr(pa, name, None)
+                if net is not None:
+                    nets.append(net)
     engram = getattr(agent, "engram", None)
     if engram is not None:
         nets.append(engram)
+    nets = [n for n in nets if hasattr(n, "eval")]
+
     for net in nets:
-        if hasattr(net, "eval"):
-            net.eval()
-    agent.epsilon = 0.0
-    agent.marl_vote = False
-    agent.llm_classifier = _NoLLM()
+        net.eval()
+    if saved_epsilon is not None:
+        agent.epsilon = 0.0
+    if saved_marl_vote is not None:
+        agent.marl_vote = False
+    if saved_deterministic is not None:
+        # MetaAgent: 关闭策略采样，否则同一样本两次跑出不同意图
+        agent.deterministic = True
+    if saved_llm is not None:
+        agent.llm_classifier = _NoLLM()
     seed_everything(0)
     try:
         yield
     finally:
-        agent.epsilon, agent.marl_vote, agent.llm_classifier = saved
+        if saved_epsilon is not None:
+            agent.epsilon = saved_epsilon
+        if saved_marl_vote is not None:
+            agent.marl_vote = saved_marl_vote
+        if saved_deterministic is not None:
+            agent.deterministic = saved_deterministic
+        if saved_llm is not None:
+            agent.llm_classifier = saved_llm
         for net in nets:
             if hasattr(net, "train"):
                 net.train()
@@ -396,10 +442,12 @@ def _reset_retriever() -> None:
         print(f"  [gate] 检索索引重建失败({exc})，继续用现有索引。")
 
 
-def load_baseline() -> Tuple[Optional[GateMetrics], Optional[GateThresholds]]:
-    if not BASELINE_PATH.exists():
+def load_baseline(agent_type: str = "single"
+                  ) -> Tuple[Optional[GateMetrics], Optional[GateThresholds]]:
+    path = baseline_path(agent_type)
+    if not path.exists():
         return None, None
-    with open(BASELINE_PATH, "r", encoding="utf-8") as fh:
+    with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
     return (
         GateMetrics.from_dict(data.get("metrics", {})),
@@ -408,22 +456,26 @@ def load_baseline() -> Tuple[Optional[GateMetrics], Optional[GateThresholds]]:
 
 
 def save_baseline(metrics: GateMetrics,
-                  thresholds: Optional[GateThresholds] = None) -> Path:
+                  thresholds: Optional[GateThresholds] = None,
+                  agent_type: str = "single") -> Path:
     thresholds = thresholds or GateThresholds()
     payload = {
         "created_at": datetime.now().isoformat(timespec="seconds"),
+        "agent_type": agent_type,
         "regression_set": str(REGRESSION_SET_PATH.relative_to(PROJECT_ROOT)),
         "metrics": metrics.to_dict(),
         "thresholds": thresholds.to_dict(),
         "note": "由 regression_gate.py --update-baseline 生成，请勿手工编辑",
     }
-    atomic_write_json(BASELINE_PATH, payload)
-    return BASELINE_PATH
+    path = baseline_path(agent_type)
+    atomic_write_json(path, payload)
+    return path
 
 
 # ================================================================ gate 判定
 def check(metrics: GateMetrics, baseline: GateMetrics,
-          thresholds: GateThresholds, set_hash: str) -> GateResult:
+          thresholds: GateThresholds, set_hash: str,
+          agent_type: str = "single") -> GateResult:
     reasons: List[str] = []
 
     if metrics.sample_count < thresholds.min_samples:
@@ -497,29 +549,50 @@ def check(metrics: GateMetrics, baseline: GateMetrics,
         metrics=metrics,
         baseline=baseline,
         thresholds=thresholds,
+        agent_type=agent_type,
     )
+
+
+def _build_agent(agent_type: str):
+    """按架构构造 gate 用的 agent（与线上默认配置一致）。"""
+    seed_everything(0)
+    if agent_type == "marl":
+        from marl_agent import create_marl_agent
+        return create_marl_agent()
+    from agent_rl import AgentRL
+    return AgentRL(marl_vote=False)
 
 
 def run_gate(update_baseline: bool = False,
              rebuild_set: bool = False,
-             agent=None) -> GateResult:
-    """执行 gate。``update_baseline=True`` 时跑完直接固化为新基线并返回通过。"""
+             agent=None,
+             agent_type: str = "single") -> GateResult:
+    """执行 gate。``update_baseline=True`` 时跑完直接固化为新基线并返回通过。
+
+    ``agent_type`` 选 ``single``（AgentRL）或 ``marl``（MetaAgent）。以前只测单体，
+    MARL 侧的回归根本不会被门禁发现。
+    """
+    if agent_type not in AGENT_TYPES:
+        return GateResult(passed=False, agent_type=agent_type,
+                          error=f"未知 agent_type: {agent_type}（可选 {AGENT_TYPES}）")
+
     try:
         samples, set_hash = ensure_regression_set(force_rebuild=rebuild_set)
     except Exception as exc:
-        return GateResult(passed=False, error=f"构建固定回归集失败: {exc}")
+        return GateResult(passed=False, agent_type=agent_type,
+                          error=f"构建固定回归集失败: {exc}")
 
     if not samples:
-        return GateResult(passed=False, error="固定回归集为空")
+        return GateResult(passed=False, agent_type=agent_type,
+                          error="固定回归集为空")
 
     if agent is None:
         try:
-            # 先固定种子再建 AgentRL：无 checkpoint 时网络是随机初始化的
-            seed_everything(0)
-            from agent_rl import AgentRL
-            agent = AgentRL(marl_vote=False)
+            # 先固定种子再建 agent：无 checkpoint 时网络是随机初始化的
+            agent = _build_agent(agent_type)
         except Exception as exc:
-            return GateResult(passed=False, error=f"加载 AgentRL 失败: {exc}")
+            return GateResult(passed=False, agent_type=agent_type,
+                              error=f"加载 {agent_type} agent 失败: {exc}")
 
     # gate 必须与本地缓存状态无关：检索索引强制从语料现场重建，
     # 否则「本地命中旧缓存」和「CI 冷启动重建」会给出不同的逐条预测。
@@ -528,32 +601,36 @@ def run_gate(update_baseline: bool = False,
     try:
         metrics = evaluate_set(agent, samples)
     except Exception as exc:
-        return GateResult(passed=False, error=f"评估执行失败: {exc}")
+        return GateResult(passed=False, agent_type=agent_type,
+                          error=f"评估执行失败: {exc}")
     metrics.set_hash = set_hash
 
-    baseline, thresholds = load_baseline()
+    baseline, thresholds = load_baseline(agent_type)
     thresholds = thresholds or GateThresholds()
 
     if update_baseline:
-        save_baseline(metrics, thresholds)
+        save_baseline(metrics, thresholds, agent_type)
         return GateResult(passed=True, metrics=metrics,
-                          baseline=metrics, thresholds=thresholds)
+                          baseline=metrics, thresholds=thresholds,
+                          agent_type=agent_type)
 
     if baseline is None:
+        rel = baseline_path(agent_type)
         return GateResult(
             passed=False, metrics=metrics, thresholds=thresholds,
-            error="缺少基线文件（eval/regression/baseline.json）；"
-                  "首次运行请执行 python regression_gate.py --update-baseline",
+            agent_type=agent_type,
+            error=f"缺少基线文件（{rel}）；首次运行请执行 "
+                  f"python regression_gate.py --agent {agent_type} --update-baseline",
         )
 
-    return check(metrics, baseline, thresholds, set_hash)
+    return check(metrics, baseline, thresholds, set_hash, agent_type)
 
 
 # ================================================================ CLI
 def _format_report(result: GateResult) -> str:
     lines: List[str] = []
     lines.append("=" * 64)
-    lines.append("回归 gate (regression gate)")
+    lines.append(f"回归 gate (regression gate) — agent={result.agent_type}")
     lines.append("=" * 64)
     if result.error:
         lines.append(f"[ERROR] {result.error}")
@@ -588,6 +665,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="跑一遍并把当前指标固化为新基线")
     parser.add_argument("--rebuild-set", action="store_true",
                         help="重建固定回归集（会改变内容哈希）")
+    parser.add_argument("--agent", choices=list(AGENT_TYPES), default="single",
+                        help="被测架构：single=AgentRL（默认），marl=MetaAgent；"
+                             "两者各有一份独立基线")
     parser.add_argument("--json", action="store_true", dest="as_json",
                         help="输出 JSON 报告")
     parser.add_argument("--quiet", action="store_true", help="只输出结论")
@@ -595,18 +675,23 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     try:
         result = run_gate(update_baseline=args.update_baseline,
-                          rebuild_set=args.rebuild_set)
+                          rebuild_set=args.rebuild_set,
+                          agent_type=args.agent)
     except KeyboardInterrupt:
         return EXIT_ERROR
 
     if args.as_json:
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
     elif args.quiet:
-        print("PASS" if result.passed else "FAIL")
+        print("ERROR" if result.error else ("PASS" if result.passed else "FAIL"))
     else:
         print(_format_report(result))
 
-    if result.error and not result.metrics:
+    # 退出码契约：0=通过 / 1=回归（check 判出的 reasons）/ 2=基础设施错误
+    # （缺基线、回归集构建失败、agent 加载失败）。以前只有「没有 metrics」
+    # 才返回 2，缺基线时 metrics 已经算出来了 → 落到 1，与文档的
+    # 「2=缺基线」不一致，调用方无法区分「回归了」和「跑不起来」。
+    if result.error:
         return EXIT_ERROR
     return EXIT_PASS if result.passed else EXIT_FAIL
 

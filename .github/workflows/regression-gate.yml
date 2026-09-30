@@ -25,11 +25,31 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Unit tests (fail fast)
-        # 基础设施（原子写/读写锁/写队列/脱敏）+ 检索 + MARL。
+        # 基础设施（原子写/读写锁/写队列/脱敏）+ 检索 + MARL + 共享语义 + 重复门禁。
         # 放在 gate 之前：先拦住明显的功能性错误，再花时间跑回归集。
         run: python -m pytest
 
-      - name: Regression gate (fixed set + baseline + threshold)
+      - name: Static analysis (duplicate detection over ClassDef methods)
+        # analyze.find_duplicates 已改为遍历 ast.ClassDef 内部方法：
+        # 旧版只看模块顶层函数，agent_rl/marl 的逐字复制全是类方法，
+        # 于是 duplicate_pairs 恒为 0。这里每次提交都重新算一遍。
+        run: python analyze.py
+
+      - name: Duplicate gate — review_*/findings.csv duplicate 检测接入 CI
+        # 离线评审 review_*/findings.csv 里的 category=duplicate 以前只躺在
+        # 人工报告里、没人回读；现在同一套检测（relation_analyzer,
+        # 阈值 0.82）在每次提交上重跑，超出基线的**新增**重复对直接拦截。
+        # 退出码 0=通过 / 1=有新增重复 / 2=缺基线等错误。
+        shell: bash
+        run: |
+          set +e
+          python duplicate_gate.py --report duplicate-findings.csv --json | tee duplicate-gate.json
+          code=${PIPESTATUS[0]}
+          echo "--- duplicate gate exit=${code} ---"
+          cat duplicate-gate.json
+          exit $code
+
+      - name: Regression gate — Single (AgentRL)
         # 退出码 0=通过 / 1=回归（拦截）/ 2=缺基线等错误（拦截）
         shell: bash
         run: |
@@ -38,9 +58,24 @@ jobs:
           code=${PIPESTATUS[0]}
           exit $code
 
+      - name: Regression gate — MARL (MetaAgent)
+        # 两套架构各有独立基线：只测单体时 MARL 侧的回归拦不住
+        # （历史上 test_marl 只 print 不 assert，回归集也只跑 single）。
+        shell: bash
+        run: |
+          set +e
+          python regression_gate.py --agent marl --json | tee gate-report-marl.json
+          code=${PIPESTATUS[0]}
+          exit $code
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: regression-gate-report
-          path: gate-report.json
+          path: |
+            gate-report.json
+            gate-report-marl.json
+            duplicate-gate.json
+            duplicate-findings.csv
+            analysis_result.json
           if-no-files-found: ignore

@@ -251,7 +251,9 @@ class AgentState:
         avg_score = np.mean([ev.score for ev in self.evidence]) if self.evidence else 0.0
         query_len = len(self.dialog_history[-1].user_query) if self.dialog_history else 0
         has_clarification = 1.0 if self.clarifications else 0.0
-        success_total = self.added_count + self.modified_count + self.refactored_count + self.successful_ops
+        # successful_ops 已在 record_operation 中累加 add/modify/refactor/delete，
+        # 这里再加一遍会把第 2 维高估约一倍（DQN 与 MAPPO 共用本向量，会同时中毒）。
+        success_total = self.successful_ops
 
         return np.array([
             self.corpus_size / 40.0,

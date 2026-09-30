@@ -118,6 +118,9 @@ class TraceRecord:
     latency_ms: float = 0.0
     token_cost: int = 0
     user_feedback: str = ""  # "positive" / "negative" / ""
+    #: 产出这条 trace 的架构（"single" / "marl"）。失败样本池是两条链路共用的，
+    #: 没有这个字段就无法区分「谁犯的错」，也无法按架构分别回修。
+    agent: str = ""
     human_label: HumanLabel = field(default_factory=HumanLabel)
 
     def to_dict(self) -> dict:
@@ -211,6 +214,7 @@ class ContinuousLearningEngine:
         user_feedback: str = "",
         state_snapshot: dict = None,
         four_way_outputs: dict = None,
+        agent: str = "",
     ) -> str:
         """记录一条完整 Trace，返回 trace_id。"""
         trace_id = self._next_trace_id()
@@ -231,6 +235,7 @@ class ContinuousLearningEngine:
             latency_ms=latency_ms,
             token_cost=token_cost,
             user_feedback=user_feedback,
+            agent=agent or os.environ.get("AGENT_TYPE", ""),
         )
 
         # 从 thinking 提取四方输出
@@ -365,6 +370,8 @@ class ContinuousLearningEngine:
             "failure_signals": signals,
             "attribution": attribution.to_dict(),
             "feedback": trace.user_feedback,
+            # 归属架构：失败样本池 agent_rl / marl 共用，必须可区分
+            "agent": trace.agent or os.environ.get("AGENT_TYPE", "unknown"),
         }
 
         atomic_write_json(failure_path, failure_record)

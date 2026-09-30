@@ -127,17 +127,44 @@ def func_body_hash(node):
     except:
         return None
 
+def iter_scoped_functions(tree):
+    """遍历模块作用域内的所有函数与**类方法**，返回 [(限定名, 节点), ...]。
+
+    旧实现只取 ``ast.iter_child_nodes(tree)`` —— 即模块顶层函数，类方法
+    根本进不了候选集。而 agent_rl / marl_agent 的逐字复制（
+    ``_safe_fallback``、``_semantic_conflict_guard``、``process``、
+    ``_auto_load``…）几乎全是类方法，于是 duplicate_pairs 恒为 0，
+    「项目自带评审已标记 11 对」在本脚本里一条都复现不出来。
+
+    限定名 ``Class.method`` 与 findings.csv 的 evidence 对齐，
+    便于跨工具比对。
+    """
+    out = []
+
+    def walk(node, prefix=""):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                out.append((prefix + child.name, child))
+            elif isinstance(child, ast.ClassDef):
+                walk(child, prefix + child.name + ".")
+            elif isinstance(child, (ast.If, ast.For, ast.While, ast.With, ast.Try)):
+                # 模块级 if __name__ == "__main__": / TYPE_CHECKING 块
+                walk(child, prefix)
+
+    walk(tree)
+    return out
+
+
 def find_duplicates(file_data):
-    """Compare all function pairs across files, return duplicates."""
+    """Compare all function/method pairs across files, return duplicates."""
     # Collect all (file, func_name, ast_node) tuples
     all_funcs = []
     for fd in file_data:
         tree = fd["tree"]
         if tree is None:
             continue
-        for node in ast.iter_child_nodes(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                all_funcs.append((fd["rel"], node.name, node))
+        for name, node in iter_scoped_functions(tree):
+            all_funcs.append((fd["rel"], name, node))
 
     # Hash each function body
     hashes = defaultdict(list)
@@ -177,157 +204,171 @@ def find_duplicates(file_data):
 
 # ─── Main ───
 
-files_data = []
-for py in sorted(collect_py_files(ROOT)):
-    relpath = rel(py)
-    try:
-        content = py.read_text(encoding="utf-8", errors="replace")
-    except:
-        continue
-    lines = content.splitlines()
-    tree = None
-    try:
-        tree = ast.parse(content, filename=relpath)
-    except SyntaxError:
-        pass
+def build_file_data(root: Path = ROOT):
+    files_data = []
+    for py in sorted(collect_py_files(ROOT)):
+        relpath = rel(py)
+        try:
+            content = py.read_text(encoding="utf-8", errors="replace")
+        except:
+            continue
+        lines = content.splitlines()
+        tree = None
+        try:
+            tree = ast.parse(content, filename=relpath)
+        except SyntaxError:
+            pass
 
-    fd = {
-        "rel": relpath,
-        "tree": tree,
-        "path": py,
-        "lines": len(lines),
-        "todos": find_todos(lines),
-        "complex_functions": calc_complexity(tree) if tree else [],
-        "imports": extract_imports(tree) if tree else [],
-        "public_apis": extract_public_apis(tree) if tree else [],
-        "hardcoded_urls": find_hardcoded_urls(content),
-        "env_refs": find_env_refs(content),
-        "suspected_secrets": find_secrets(content, lines),
-        "last_modified": last_modified(py),
+        fd = {
+            "rel": relpath,
+            "tree": tree,
+            "path": py,
+            "lines": len(lines),
+            "todos": find_todos(lines),
+            "complex_functions": calc_complexity(tree) if tree else [],
+            "imports": extract_imports(tree) if tree else [],
+            "public_apis": extract_public_apis(tree) if tree else [],
+            "hardcoded_urls": find_hardcoded_urls(content),
+            "env_refs": find_env_refs(content),
+            "suspected_secrets": find_secrets(content, lines),
+            "last_modified": last_modified(py),
+        }
+        files_data.append(fd)
+
+    return files_data
+
+
+def main() -> dict:
+    """扫描项目、生成 analysis_result.json（导入本模块不会执行）。"""
+    files_data = build_file_data()
+
+    # Build output
+    output_files = []
+    for fd in files_data:
+        output_files.append({
+            "path": fd["rel"],
+            "lines": fd["lines"],
+            "todos": fd["todos"],
+            "complex_functions": fd["complex_functions"],
+            "imports": fd["imports"],
+            "public_apis": fd["public_apis"],
+            "hardcoded_urls": fd["hardcoded_urls"],
+            "env_refs": fd["env_refs"],
+            "suspected_secrets": fd["suspected_secrets"],
+            "last_modified": fd["last_modified"],
+        })
+
+    # ─── Dependency graph ───
+    # Map module names to file paths (top-level modules only)
+    module_to_files = defaultdict(list)
+    for fd in files_data:
+        # Get the module stem (filename without .py)
+        stem = fd["rel"].replace("/", ".").replace(".py", "")
+        # Top-level module: first component
+        parts = fd["rel"].split("/")
+        if parts[-1] == "__init__.py":
+            top = parts[-2] if len(parts) > 1 else "root"
+        else:
+            top = parts[-1].replace(".py", "")
+        module_to_files[top].append(fd["rel"])
+
+    dep_graph = {}
+    all_file_rels = {fd["rel"] for fd in files_data}
+    for fd in files_data:
+        deps = set()
+        for imp in fd["imports"]:
+            # Try to resolve to a file in the project
+            # Check direct module match
+            if imp in module_to_files:
+                for f in module_to_files[imp]:
+                    if f != fd["rel"]:
+                        deps.add(f)
+            # Check if it's a submodule of a package
+            for f in all_file_rels:
+                f_stem = f.replace("/", ".").replace(".py", "")
+                if f_stem.endswith("." + imp) or f_stem == imp:
+                    if f != fd["rel"]:
+                        deps.add(f)
+        if deps:
+            dep_graph[fd["rel"]] = sorted(deps)
+
+    # ─── Circular dependencies ───
+    def find_cycles(graph):
+        cycles = []
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color = {n: WHITE for n in graph}
+        path = []
+        path_set = set()
+
+        def dfs(node):
+            color[node] = GRAY
+            path.append(node)
+            path_set.add(node)
+            for nb in graph.get(node, []):
+                if nb not in color:
+                    color[nb] = WHITE
+                if color[nb] == GRAY:
+                    # Found cycle
+                    idx = path.index(nb)
+                    cycle = path[idx:] + [nb]
+                    cycles.append(cycle)
+                elif color[nb] == WHITE:
+                    dfs(nb)
+            path.pop()
+            path_set.discard(node)
+            color[node] = BLACK
+
+        for node in list(graph.keys()):
+            if color.get(node, WHITE) == WHITE:
+                dfs(node)
+        return cycles
+
+    circular = find_cycles(dep_graph)
+
+    # Deduplicate circular deps
+    seen_cycles = set()
+    unique_circular = []
+    for c in circular:
+        key = tuple(sorted(c[:-1]))  # exclude duplicate end node
+        if key not in seen_cycles:
+            seen_cycles.add(key)
+            unique_circular.append(c)
+
+    # ─── Orphan modules ───
+    all_imported = set()
+    for deps in dep_graph.values():
+        all_imported.update(deps)
+
+    # A module is orphan if it has a .py file but no other file imports it
+    orphan_modules = sorted(
+        f for f in all_file_rels
+        if f not in all_imported and not f.endswith("__init__.py")
+    )
+
+    # ─── Duplicate functions ───
+    dupes = find_duplicates(files_data)
+
+    # ─── Final JSON ───
+    result = {
+        "files": output_files,
+        "dependency_graph": dep_graph,
+        "circular_deps": unique_circular,
+        "orphan_modules": orphan_modules,
+        "duplicate_pairs": dupes,
     }
-    files_data.append(fd)
 
-# Build output
-output_files = []
-for fd in files_data:
-    output_files.append({
-        "path": fd["rel"],
-        "lines": fd["lines"],
-        "todos": fd["todos"],
-        "complex_functions": fd["complex_functions"],
-        "imports": fd["imports"],
-        "public_apis": fd["public_apis"],
-        "hardcoded_urls": fd["hardcoded_urls"],
-        "env_refs": fd["env_refs"],
-        "suspected_secrets": fd["suspected_secrets"],
-        "last_modified": fd["last_modified"],
-    })
+    out_path = ROOT / "analysis_result.json"
+    from atomic_io import atomic_write_json
+    atomic_write_json(out_path, result)
+    print(f"Analysis complete. Output: {out_path}")
+    print(f"Files analyzed: {len(output_files)}")
+    print(f"Dependencies: {len(dep_graph)} edges")
+    print(f"Circular deps: {len(unique_circular)}")
+    print(f"Orphan modules: {len(orphan_modules)}")
+    print(f"Duplicate pairs: {len(dupes)}")
+    return result
 
-# ─── Dependency graph ───
-# Map module names to file paths (top-level modules only)
-module_to_files = defaultdict(list)
-for fd in files_data:
-    # Get the module stem (filename without .py)
-    stem = fd["rel"].replace("/", ".").replace(".py", "")
-    # Top-level module: first component
-    parts = fd["rel"].split("/")
-    if parts[-1] == "__init__.py":
-        top = parts[-2] if len(parts) > 1 else "root"
-    else:
-        top = parts[-1].replace(".py", "")
-    module_to_files[top].append(fd["rel"])
 
-dep_graph = {}
-all_file_rels = {fd["rel"] for fd in files_data}
-for fd in files_data:
-    deps = set()
-    for imp in fd["imports"]:
-        # Try to resolve to a file in the project
-        # Check direct module match
-        if imp in module_to_files:
-            for f in module_to_files[imp]:
-                if f != fd["rel"]:
-                    deps.add(f)
-        # Check if it's a submodule of a package
-        for f in all_file_rels:
-            f_stem = f.replace("/", ".").replace(".py", "")
-            if f_stem.endswith("." + imp) or f_stem == imp:
-                if f != fd["rel"]:
-                    deps.add(f)
-    if deps:
-        dep_graph[fd["rel"]] = sorted(deps)
 
-# ─── Circular dependencies ───
-def find_cycles(graph):
-    cycles = []
-    WHITE, GRAY, BLACK = 0, 1, 2
-    color = {n: WHITE for n in graph}
-    path = []
-    path_set = set()
-
-    def dfs(node):
-        color[node] = GRAY
-        path.append(node)
-        path_set.add(node)
-        for nb in graph.get(node, []):
-            if nb not in color:
-                color[nb] = WHITE
-            if color[nb] == GRAY:
-                # Found cycle
-                idx = path.index(nb)
-                cycle = path[idx:] + [nb]
-                cycles.append(cycle)
-            elif color[nb] == WHITE:
-                dfs(nb)
-        path.pop()
-        path_set.discard(node)
-        color[node] = BLACK
-
-    for node in list(graph.keys()):
-        if color.get(node, WHITE) == WHITE:
-            dfs(node)
-    return cycles
-
-circular = find_cycles(dep_graph)
-
-# Deduplicate circular deps
-seen_cycles = set()
-unique_circular = []
-for c in circular:
-    key = tuple(sorted(c[:-1]))  # exclude duplicate end node
-    if key not in seen_cycles:
-        seen_cycles.add(key)
-        unique_circular.append(c)
-
-# ─── Orphan modules ───
-all_imported = set()
-for deps in dep_graph.values():
-    all_imported.update(deps)
-
-# A module is orphan if it has a .py file but no other file imports it
-orphan_modules = sorted(
-    f for f in all_file_rels
-    if f not in all_imported and not f.endswith("__init__.py")
-)
-
-# ─── Duplicate functions ───
-dupes = find_duplicates(files_data)
-
-# ─── Final JSON ───
-result = {
-    "files": output_files,
-    "dependency_graph": dep_graph,
-    "circular_deps": unique_circular,
-    "orphan_modules": orphan_modules,
-    "duplicate_pairs": dupes,
-}
-
-out_path = ROOT / "analysis_result.json"
-from atomic_io import atomic_write_json
-atomic_write_json(out_path, result)
-print(f"Analysis complete. Output: {out_path}")
-print(f"Files analyzed: {len(output_files)}")
-print(f"Dependencies: {len(dep_graph)} edges")
-print(f"Circular deps: {len(unique_circular)}")
-print(f"Orphan modules: {len(orphan_modules)}")
-print(f"Duplicate pairs: {len(dupes)}")
+if __name__ == "__main__":
+    main()
