@@ -52,6 +52,7 @@ from intent_shared import (
     MODIFY_FILE_KEYWORDS,
     REFACTOR_KEYWORDS,
     FILENAME_QUERY_KEYWORDS,
+    FILELIST_SEARCH_KEYWORDS,
     WRITE_KEYWORDS,
     ANALYSIS_GATE_KEYWORDS,
     FORBIDDEN_MODIFY_KEYWORDS,
@@ -71,6 +72,7 @@ from transformer_arch import (
     TransformerDuelingQNetworkWithNSP, TransformerClassificationHead,
     EngramConditionalMemory,
 )
+from nsp_latent import NSPLatentModule, apply_nsp_ablation, build_nsp
 
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 DEFAULT_MODEL_PATH = os.path.join(MODEL_DIR, "agent_rl.pth")
@@ -250,14 +252,29 @@ class PrioritizedReplayBuffer:
         self.max_priority = 1.0
         self.min_priority = 0.05 ** alpha
         self._size = 0
+        # 轨迹片段标记：连续同 seg 且中间无 done 才算一条可用于 H 步 rollout 的轨迹
+        self._seg_seq = 0
+        self._prev_done = True
 
     def __len__(self) -> int:
         return self._size
 
-    def push(self, state, action, reward, next_state, done):
+    def push(self, state, action, reward, next_state, done, seg=None):
         priority = max(self.max_priority ** self.alpha, self.min_priority)
-        self.tree.add(priority, (state, action, reward, next_state, done))
+        if seg is None:
+            if self._prev_done:
+                self._seg_seq += 1
+            seg = self._seg_seq
+        self._prev_done = bool(done)
+        self.tree.add(priority, (state, action, reward, next_state, done, int(seg)))
         self._size = min(self._size + 1, self.tree.capacity)
+
+    @staticmethod
+    def _split(item):
+        """兼容旧 5 元组与新 6 元组（含 seg）。"""
+        if len(item) >= 6:
+            return item[0], item[1], item[2], item[3], item[4], item[5]
+        return item[0], item[1], item[2], item[3], item[4], 0
 
     def sample(self, batch_size: int) -> Tuple[List, np.ndarray, np.ndarray]:
         if self.tree.total <= 0:
@@ -303,6 +320,46 @@ class PrioritizedReplayBuffer:
             self.max_priority = max(self.max_priority, priority ** (1.0 / self.alpha))
             self.tree.update(int(idx), priority)
 
+    # ---------------------------------------------------- H 步轨迹采样
+    def sample_segments(self, batch_size: int, horizon: int
+                        ) -> List[Dict[str, "np.ndarray"]]:
+        """采样连续 ``horizon`` 步的真实轨迹片段，供 NSP 的多步 rollout 用。
+
+        片段 = 同一 seg 内、中间无 done 的 ``horizon+1`` 个连续槽位。
+        环形缓冲不跨回绕点取样；找不到足够长的轨迹就返回已找到的部分
+        （单步自博弈数据全是 done=True，这里返回空列表是正常的）。
+        """
+        cap = self.tree.capacity
+        limit = self.tree.n_entries if self.tree.n_entries < cap else cap
+        horizon = int(horizon)
+        if horizon < 1 or self._size <= 0 or limit <= horizon:
+            return []
+
+        out: List[Dict[str, "np.ndarray"]] = []
+        attempts = 0
+        max_attempts = max(batch_size * 8, 32)
+        while len(out) < batch_size and attempts < max_attempts:
+            attempts += 1
+            start = random.randrange(0, limit - horizon)
+            items = [self.tree.data[start + k] for k in range(horizon + 1)]
+            if any(it is None for it in items):
+                continue
+            split = [self._split(it) for it in items]
+            seg = split[0][5]
+            if any(g[5] != seg for g in split[1:]):
+                continue
+            if any(g[4] for g in split[:-1]):
+                continue
+            out.append({
+                "states": np.stack([g[0] for g in split]).astype(np.float32),
+                "actions": np.stack([g[1] for g in split[:-1]]).astype(np.int64),
+                "rewards": np.stack([g[2] for g in split[:-1]]).astype(np.float32),
+                "next_states": np.stack([g[3] for g in split]).astype(np.float32),
+                "dones": np.asarray([g[4] for g in split], dtype=np.float32),
+                "seg": np.asarray(seg, dtype=np.int64),
+            })
+        return out
+
     # ---------------------------------------------------- 持久化（buffer 落盘）
     MAX_PERSIST_SAMPLES = 20000   # 落盘样本上限，避免 checkpoint 膨胀
 
@@ -323,17 +380,19 @@ class PrioritizedReplayBuffer:
         limit = self.MAX_PERSIST_SAMPLES if max_samples is None else max_samples
         indices = self._chronological_indices()[-limit:]
 
-        states, actions, rewards, next_states, dones, priorities = [], [], [], [], [], []
+        states, actions, rewards, next_states, dones, priorities, segs = \
+            [], [], [], [], [], [], []
         for slot in indices:
             item = self.tree.data[slot]
             if item is None:
                 continue
-            s, a, r, ns, d = item
+            s, a, r, ns, d, g = self._split(item)
             states.append(s)
             actions.append(a)
             rewards.append(r)
             next_states.append(ns)
             dones.append(d)
+            segs.append(g)
             priorities.append(self.tree.tree[slot + self.tree.capacity - 1])
 
         if not states:
@@ -344,6 +403,7 @@ class PrioritizedReplayBuffer:
             "rewards": np.asarray(rewards, dtype=np.float32),
             "next_states": np.asarray(next_states, dtype=np.float32),
             "dones": np.asarray(dones, dtype=np.float32),
+            "segs": np.asarray(segs, dtype=np.int64),
             "priorities": np.asarray(priorities, dtype=np.float64),
             "alpha": np.asarray(self.alpha, dtype=np.float64),
             "beta": np.asarray(self.beta, dtype=np.float64),
@@ -362,6 +422,8 @@ class PrioritizedReplayBuffer:
         priorities = np.asarray(arrays.get(
             "priorities", np.full(len(states), self.max_priority ** self.alpha)
         ), dtype=np.float64)
+        segs = np.asarray(arrays.get(
+            "segs", np.zeros(len(states), dtype=np.int64)), dtype=np.int64)
 
         # 清空再按序回填（顺序即旧→新，保证 write_pos 指向正确位置）
         self.tree.tree[:] = 0.0
@@ -369,12 +431,21 @@ class PrioritizedReplayBuffer:
         self.tree.write_pos = 0
         self.tree.n_entries = 0
         self._size = 0
+        self._prev_done = True
+        self._seg_seq = 0
 
         for i in range(len(states)):
+            seg = int(segs[i]) if i < len(segs) else 0
+            if seg <= 0:
+                if self._prev_done:
+                    self._seg_seq += 1
+                seg = self._seg_seq
+            self._prev_done = bool(dones[i])
+            self._seg_seq = max(self._seg_seq, seg)
             self.tree.add(
                 float(priorities[i]),
                 (states[i], int(actions[i]), float(rewards[i]),
-                 next_states[i], bool(dones[i])),
+                 next_states[i], bool(dones[i]), seg),
             )
         self._size = self.tree.n_entries
         self.alpha = float(arrays.get("alpha", self.alpha))
@@ -399,6 +470,10 @@ CLARIFY_BONUS = 1.0        # 首次澄清的信息增益（P2 = P1 + 1.0）
 CLARIFY_EXTRA = 1.5        # 第 3 轮起每多问一轮的额外惩罚
 R_WRONG = -4.0             # 答错基准（*_failure）
 MAX_CLARIFY_DEPTH = 3      # 澄清深度封顶，超过后强制回答
+# 写意图护栏：置信度低于此值禁止盲执行写操作（降级为事实查询）。
+# 与 VAGUE→QUERY 降级时 max(conf, 0.4) 的置信度下限同源；
+# 0.4 以下的仲裁结果接近 11 类随机猜测（≈0.09），意图本身不可信。
+WRITE_CONF_GUARD = 0.4
 EV_BETA = 0.4              # 对"下一轮才拿到答案"的折扣（用户打断成本）
 EV_ETA = 0.8               # 澄清对剩余不确定性的解析率
 EV_NOMINAL_BASE = 6.0      # 计算期望阈值时的名义答对奖励
@@ -476,6 +551,18 @@ def round_reward(outcome: str, reward_map: Dict[str, float],
 # ================================================================
 #  5. 主 Agent
 # ================================================================
+# 降级兜底的「写动作 + 文件指称」判据：「写一个.gitignore 文件」这类建文件
+# 指令不含任何 ADD_FILE_KEYWORDS（写入/生成都不在句中），关键词全 miss 时
+# 会落到 _safe_fallback 默认分支盲猜 QUERY —— 与事故同源的降级路径缺陷。
+_WRITE_ACTION_VERBS = ("写", "write")
+_FILE_REF_RE = re.compile(
+    r"(?:[A-Za-z0-9_-]+\.)+[A-Za-z0-9]{1,12}\b|\.[A-Za-z0-9]{1,12}\b"
+)
+#: 具体根路径（盘符 / UNC / 绝对路径）——「列文件」只有带了路径才比
+#: 「扫描/遍历」闸门更具体，否则「扫描该目录统计文件」仍归 FILE_SCAN。
+_FILELIST_PATH_RE = re.compile(r"[A-Za-z]:[\\/]|\\\\\w|~/|/(?:home|etc|usr|var|opt)/")
+
+
 class AgentRL:
     """意图分类 Agent：分类头 + Dueling Double DQN + 蒸馏。
 
@@ -490,7 +577,7 @@ class AgentRL:
         IntentType.ADD_FILE, IntentType.DELETE_FILE, IntentType.MODIFY_FILE,
         IntentType.REFACTOR, IntentType.QUERY, IntentType.DEEP_SEARCH, IntentType.VAGUE,
         IntentType.FILE_ANALYSIS, IntentType.FILE_SCAN, IntentType.REPORT_GENERATE,
-        IntentType.FILENAME_QUERY,
+        IntentType.FILENAME_QUERY, IntentType.FILELIST_SEARCH,
     ]
     FEATURE_DIM = 268
     CONFIDENCE_THRESHOLD = SHARED_CONFIDENCE_THRESHOLD  # 与 marl_agent 同源，见 intent_shared
@@ -513,6 +600,9 @@ class AgentRL:
         "refactor_failure": -4.0, "insufficient_evidence": -2.0,
         "clarification_resolved": 7.0,
         "timeout": -3.0, "evidence_sufficient": 8.0,
+        # 输入不完整（缺文件名/缺内容）≠ 执行失败：前者是澄清问题，
+        # 不该让操作层替意图分类背 -4 的锅污染信用分配，故中性 0。
+        "missing_slot": 0.0,
     }
 
     # 训练模板 / 演示样本：唯一副本在 intent_shared，两个 agent 共用一份，
@@ -538,6 +628,8 @@ class AgentRL:
         "filename_query": "为我找到最近添加的文件名",
         "filename_query_2": "最近修改的文件有哪些",
         "filename_query_3": "查找最近创建的txt文件",
+        "filelist_search": "为我找出C:\\Steam路径下的steam注册表文件",
+        "filelist_search_2": "列出 D:\\data 目录下的所有文件",
     }
 
     def __init__(self, model_path: str = None, marl_vote: bool = True):
@@ -562,13 +654,29 @@ class AgentRL:
         )
         self.target_network.load_state_dict(self.q_network.state_dict())
 
+        # NSP 潜空间建模（单副本实现，见 nsp_latent.py）：
+        # EMA 目标编码器 + InfoNCE 防塌缩 + 随机 (μ,σ) 转移 + 想象 Q 桥接。
+        self.nsp: NSPLatentModule = build_nsp(
+            self.q_network.transformer, self.q_network.pool,
+            action_dim=self.num_actions, d_model=128,
+            num_actions=self.num_actions, nsp_task=1,
+        )
+
         # NSP 辅助任务超参
         self.nsp_lambda = 0.1  # NSP 损失权重
+        # 想象 Q 混入 TD 目标的权重：桥未标定前从 0 线性 ramp 到上限
+        self.nsp_imagine_alpha = 0.2
+        # 消融复位基准与当前档位（见 nsp_latent.ABLATION_SPECS）
+        self.nsp_imagine_alpha_default = 0.2
+        self.nsp_ablate = "none"
+        self.nsp_imagine_warmup = 2000
 
         # Engram Conditional Memory — 解决幻觉问题
         self.engram = EngramConditionalMemory(d_model=128, input_dim=self.state_dim)
 
-        all_params = list(self.q_network.parameters()) + list(self.classifier.parameters())
+        all_params = (list(self.q_network.parameters())
+                      + list(self.classifier.parameters())
+                      + self.nsp.trainable_parameters())
         self.optimizer = optim.Adam(all_params, lr=3e-4)
         self.replay_buffer = PrioritizedReplayBuffer(50000)
 
@@ -664,6 +772,11 @@ class AgentRL:
             "optimizer": self.optimizer.state_dict(),
             "epsilon": self.epsilon,
             "nsp_lambda": self.nsp_lambda,
+            "nsp": self.nsp.state_dict(),
+            "nsp_enabled": bool(self.nsp.enabled),
+            "nsp_ablate": self.nsp_ablate,
+            "nsp_imagine_alpha": self.nsp_imagine_alpha,
+            "nsp_imagine_warmup": self.nsp_imagine_warmup,
             "training_step": self.training_step,
             "trained": self.trained,
             # --- 软更新调度参数（跨进程保持退火进度一致） ---
@@ -759,6 +872,30 @@ class AgentRL:
                 pass
         self.epsilon = ckpt.get("epsilon", self.epsilon)
         self.nsp_lambda = ckpt.get("nsp_lambda", self.nsp_lambda)
+        # NSP 权重：旧 checkpoint 没有这个键 → 把目标副本对齐到在线编码器
+        if "nsp" in ckpt:
+            try:
+                self.nsp.load_state_dict(ckpt["nsp"])
+            except (RuntimeError, ValueError) as exc:
+                print(f"  [持久化] NSP 权重加载失败({exc})，重置并重新对齐目标副本。")
+                self.nsp.refresh_target()
+        else:
+            self.nsp.refresh_target()
+        # 消融档位是权威来源（见 nsp_latent.ABLATION_SPECS）；旧 checkpoint
+        # 没有 nsp_ablate 键时退回 nsp_enabled，并把想象权重当默认值记住。
+        if "nsp_imagine_alpha" in ckpt:
+            self.nsp_imagine_alpha_default = float(ckpt["nsp_imagine_alpha"])
+        if "nsp_ablate" in ckpt:
+            try:
+                apply_nsp_ablation(self, ckpt["nsp_ablate"])
+            except ValueError:
+                print(f"  [持久化] 未知 NSP 消融档位 {ckpt['nsp_ablate']!r}，按 none 加载。")
+                apply_nsp_ablation(self, "none")
+        else:
+            enabled = bool(ckpt.get("nsp_enabled", self.nsp.enabled))
+            apply_nsp_ablation(self, "none" if enabled else "off")
+        self.nsp_imagine_warmup = int(
+            ckpt.get("nsp_imagine_warmup", self.nsp_imagine_warmup))
         self.training_step = ckpt.get("training_step", self.training_step)
         self.trained = ckpt.get("trained", self.trained)
         self.tau_init = ckpt.get("tau_init", self.tau_init)
@@ -1067,6 +1204,14 @@ class AgentRL:
         if len(q) <= 2 and not any(c in q for c in "搜索查询删除添加修改"):
             return IntentType.VAGUE
 
+        # 带具体根路径的列文件请求要压过「分析/扫描/报告」闸门：
+        # 「扫描 C:\Windows 目录下的日志文件」要的是文件清单，不是内容分析；
+        # 没有路径的「扫描该目录统计文件」仍交给闸门 → FILE_SCAN。
+        if any(kw in q for kw in FILELIST_SEARCH_KEYWORDS) \
+                and _FILELIST_PATH_RE.search(q) \
+                and not any(w in q for w in op_kws):
+            return IntentType.FILELIST_SEARCH
+
         # 文件分析/扫描/报告检测（闸门词唯一定义在 intent_shared，
         # 与语义护栏、marl 的 rule_keywords 同口径）
         if any(kw in q for kw in ANALYSIS_GATE_KEYWORDS):
@@ -1081,6 +1226,13 @@ class AgentRL:
             else:
                 return IntentType.DEEP_SEARCH
 
+        # 指定路径列文件（无具体路径的兜底，必须排在泛化的 SEARCH_KEYWORDS
+        # 之前，否则「找出 C:\Steam 路径下的文件」会先被「找」拦成 QUERY；
+        # 写操作词优先 —— 「在该目录下添加文件」仍是 add_file）
+        if any(kw in q for kw in FILELIST_SEARCH_KEYWORDS) \
+                and not any(w in q for w in op_kws):
+            return IntentType.FILELIST_SEARCH
+
         # 长指令检测
         if len(q) > 30:
             if any(kw in q for kw in DEEP_ANALYSIS_KEYWORDS):
@@ -1090,7 +1242,8 @@ class AgentRL:
 
         if any(w in q for w in DEEP_ANALYSIS_KEYWORDS):
             return IntentType.DEEP_SEARCH
-        if any(w in q for w in ADD_FILE_KEYWORDS):
+        if any(w in q for w in ADD_FILE_KEYWORDS) or (
+                any(v in q for v in _WRITE_ACTION_VERBS) and _FILE_REF_RE.search(q)):
             return IntentType.ADD_FILE
         if any(w in q for w in DELETE_KEYWORDS):
             return IntentType.DELETE_FILE
@@ -1157,6 +1310,17 @@ class AgentRL:
             for tp, p in zip(self.target_network.parameters(), self.q_network.parameters()):
                 tp.data.mul_(1.0 - tau).add_(p.data, alpha=tau)
 
+    def _imagine_alpha(self) -> float:
+        """想象 Q 混入 TD 目标的权重：价值桥标定完成前从 0 线性 ramp 到上限。
+
+        桥初始是随机网络，直接混进 TD 目标等于往回归目标里注入噪声；
+        ramp-up 让前 ``nsp_imagine_warmup`` 步先靠真实目标网络收敛。
+        """
+        if not self.nsp.enabled:
+            return 0.0
+        warm = max(int(self.nsp_imagine_warmup), 1)
+        return float(self.nsp_imagine_alpha) * min(1.0, self.training_step / warm)
+
     def train_step(self):
         if len(self.replay_buffer) < self.batch_size:
             return
@@ -1173,13 +1337,17 @@ class AgentRL:
         weights_t = torch.FloatTensor(weights)
 
         # --- DQN Loss (Double DQN) ---
-        # 训练时同时获取 Q-values 和 NSP 预测
-        current_q, nsp_pred = self.q_network.forward_with_nsp(states, actions)
+        current_q = self.q_network(states)
 
+        alpha = self._imagine_alpha()
         with torch.no_grad():
             next_actions = self.q_network(next_states).argmax(dim=1, keepdim=True)
-            next_q = self.target_network(next_states).gather(1, next_actions).squeeze(1)
-            target_q = rewards + self.gamma * next_q * (1 - dones)
+            next_q_full = self.target_network(next_states)
+            next_q = next_q_full.gather(1, next_actions).squeeze(1)
+            # 想象 Q：把预测的下一状态潜变量过价值桥，按 α 混进 TD 目标
+            boot_next, _ = self.nsp.imagine_q_target(
+                states, actions, next_q, alpha)
+            target_q = rewards + self.gamma * boot_next * (1 - dones)
 
         td_errors = (current_q.gather(1, actions.unsqueeze(1)).squeeze(1) - target_q).detach().numpy()
         self.replay_buffer.update_priorities(indices, td_errors)
@@ -1189,13 +1357,26 @@ class AgentRL:
             target_q, reduction='none'
         )).mean()
 
-        # --- NSP Loss (Next State Prediction) ---
-        # 目标: 从 next_state 编码得到实际的下一状态嵌入 (stop gradient)
-        with torch.no_grad():
-            target_next_tokens = self.q_network.transformer(next_states, task=1)
-            target_next_state_embed = self.q_network.pool(target_next_tokens[:, 0])
-
-        nsp_loss = self.q_network.compute_nsp_loss(nsp_pred, target_next_state_embed)
+        # --- NSP 潜空间监督（EMA 目标 + InfoNCE + KL + 价值桥标定）---
+        if self.nsp.enabled:
+            nsp_stats = self.nsp.supervise(states, actions, next_states,
+                                           next_q_full)
+            segments = self.replay_buffer.sample_segments(
+                max(self.batch_size // 4, 1), self.nsp.horizon)
+            if segments:
+                seg_states = torch.FloatTensor(
+                    np.stack([s["states"] for s in segments]))
+                seg_actions = torch.LongTensor(
+                    np.stack([s["actions"] for s in segments]))
+                seg_next = torch.FloatTensor(
+                    np.stack([s["next_states"] for s in segments]))
+                for key, value in self.nsp.segment_losses(
+                        seg_states, seg_actions, seg_next).items():
+                    nsp_stats[key] = value
+            nsp_loss = nsp_stats["nsp_total"]
+        else:
+            nsp_stats = {}
+            nsp_loss = dqn_loss * 0.0
 
         # --- 分类损失 ---
         cls_loss = F.cross_entropy(
@@ -1214,9 +1395,15 @@ class AgentRL:
         self.optimizer.zero_grad()
         total_loss.backward()
         torch.nn.utils.clip_grad_norm_(
-            list(self.q_network.parameters()) + list(self.classifier.parameters()), 1.0
+            list(self.q_network.parameters()) + list(self.classifier.parameters())
+            + self.nsp.trainable_parameters(), 1.0
         )
         self.optimizer.step()
+        self.nsp.update_ema()
+        if nsp_stats:
+            self.nsp.metrics.update(
+                {k: float(v.detach()) for k, v in nsp_stats.items()})
+            self.nsp.metrics.update({"nsp_imagine_alpha": alpha})
         self.training_step += 1
 
         self._soft_update_target(self._current_tau())
@@ -1404,6 +1591,106 @@ class AgentRL:
             self.reward_history.append(total_reward)
             print(f"    Episode {episode}/{num_episodes}: Reward={total_reward:.1f}, ε={self.epsilon:.4f}")
         self.trained = True
+
+    # ------------------------------------------------- NSP 潜空间评估
+    def nsp_probe_texts(self, count: int) -> List[str]:
+        """确定性文本池：评估样本优先，不够用固定模板补足（同一批文本恒定）。"""
+        texts: List[str] = []
+        seen: set = set()
+
+        def _add(text: str) -> bool:
+            text = (text or "").strip()
+            if not text or text in seen:
+                return False
+            seen.add(text)
+            texts.append(text)
+            return True
+
+        for text in self.EVAL_REAL_SAMPLES.values():
+            _add(text)
+            if len(texts) >= count:
+                return texts[:count]
+        files = self.SAMPLE_FILES or ["a.txt"]
+        second = files[1] if len(files) > 1 else files[0]
+        for templates in self.TASK_TEMPLATES.values():
+            for tpl in templates:
+                try:
+                    _add(tpl.format(f=files[0], g=second, c=self.SAMPLE_CONTENT))
+                except (KeyError, IndexError, ValueError):
+                    continue
+                if len(texts) >= count:
+                    return texts[:count]
+        return texts
+
+    def nsp_probe(self) -> Dict[str, float]:
+        """NSP 潜空间质量探针：固定文本池 + 钉零状态通道 + no_grad。
+
+        同一份权重两次调用结果一致（跨机器亦然），因此可以直接写进
+        regression gate 的报告、MCP 量化工具与消融脚本。
+
+        分布对齐说明：离线/自博弈经验全是 ``done=True`` 自循环
+        （``store_experience(vec, a, r, vec, done=True)``），训练只见过
+        ``s' == s``。探针必须用同样的自循环正样本，否则即使已训练好的
+        权重也会读出比随机还差的数（链式 ``roll`` 实测
+        ``infonce_acc=0.0``，自循环 ``0.625``），门禁阈值将失去意义。
+        """
+        horizon = max(int(self.nsp.horizon), 1)
+        need = max(4 * (horizon + 1), 16)
+        texts = self.nsp_probe_texts(need)
+        if len(texts) < 2:
+            return {}
+
+        states_np = np.stack([
+            np.concatenate([
+                self.feature_extractor.extract(t),
+                np.zeros(12, dtype=np.float32),
+            ]).astype(np.float32)
+            for t in texts
+        ])
+        # 自循环：与训练分布一致（见上）。链式 roll 会引入训练从未见过的
+        # 跨文本跳变，把分布外误差误判成潜空间质量。
+        next_np = states_np
+        actions_np = np.arange(len(states_np), dtype=np.int64) % self.num_actions
+
+        # q_next 走目标网络：不切 eval 的话它的 dropout 会把探针结果打散
+        was_training = self.target_network.training
+        self.target_network.eval()
+        try:
+            with torch.no_grad():
+                states = torch.FloatTensor(states_np)
+                next_states = torch.FloatTensor(next_np)
+                actions = torch.LongTensor(actions_np)
+                q_next = self.target_network(next_states)
+
+                segment = None
+                groups = len(states_np) // (horizon + 1)
+                if groups >= 1:
+                    used = groups * (horizon + 1)
+                    # 自循环轨迹：每段 H+1 步重复同一步（done=True 世界里这是
+                    # 唯一的真实轨迹形态），动作沿用该步动作。链式拼不同文本
+                    # 会让 segment 测到训练从未优化过的分布外 rollout。
+                    base_states = torch.FloatTensor(
+                        states_np[:used]).reshape(groups, horizon + 1, -1)
+                    base_actions = torch.LongTensor(
+                        actions_np[:used]).reshape(groups, horizon + 1)
+                    seg_states = base_states[:, :1, :].expand(
+                        groups, horizon + 1, base_states.size(-1)).contiguous()
+                    seg_actions = base_actions[:, :1].expand(
+                        groups, horizon).contiguous()
+                    segment = {
+                        "states": seg_states,
+                        "actions": seg_actions,
+                        "next_states": seg_states.clone(),
+                    }
+                return self.nsp.probe(states, actions, next_states, q_next,
+                                      segment=segment)
+        finally:
+            if was_training:
+                self.target_network.train()
+
+    def nsp_metrics_snapshot(self) -> Dict[str, float]:
+        """NSP 训练期滚动指标（EMA 均值，非确定性，仅供观测）。"""
+        return self.nsp.metrics_snapshot()
 
     # ------------------------------------------------- 评估
     def evaluate(self) -> Dict[str, float]:

@@ -29,6 +29,8 @@
     python regression_gate.py                  # 跑 gate（CI 默认行为，单体）
     python regression_gate.py --agent marl     # 跑 MARL 侧 gate
     python regression_gate.py --update-baseline # 重新固化基线（人工触发）
+    python regression_gate.py --update-baseline --nsp-max-total 8 --nsp-min-infonce-acc 0.4
+                                                # 固化时一并写入 NSP 阈值（探针已与训练分布对齐后再设）
     python regression_gate.py --json           # 机器可读输出
     python regression_gate.py --rebuild-set     # 重建固定回归集（会改哈希）
 
@@ -89,6 +91,10 @@ class GateThresholds:
     min_per_intent_accuracy_hard: float = 0.05  # 单类绝对兜底下限（恒定生效）
     min_intent_samples: int = 5       # 单类最少样本数
     min_samples: int = 50             # 回归集最少样本数
+    # ---- NSP 潜空间（None = 只记录不判定；设值才拦）----
+    # probe() 是固定输入 → 固定输出，所以这些阈值跨机器可复现。
+    nsp_max_total: Optional[float] = None      # NSP 总损失上限（越低越好）
+    nsp_min_infonce_acc: Optional[float] = None  # InfoNCE top-1 命中率下限
 
     def to_dict(self) -> dict:
         return {
@@ -98,6 +104,8 @@ class GateThresholds:
             "min_per_intent_accuracy_hard": self.min_per_intent_accuracy_hard,
             "min_intent_samples": self.min_intent_samples,
             "min_samples": self.min_samples,
+            "nsp_max_total": self.nsp_max_total,
+            "nsp_min_infonce_acc": self.nsp_min_infonce_acc,
         }
 
     @classmethod
@@ -118,6 +126,8 @@ class GateMetrics:
     sample_count: int = 0
     per_intent: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     set_hash: str = ""
+    # NSP 潜空间的确定性探针快照（键：单体无前缀 / MARL 带角色前缀）。
+    nsp: Dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -126,6 +136,7 @@ class GateMetrics:
             "sample_count": self.sample_count,
             "per_intent": self.per_intent,
             "set_hash": self.set_hash,
+            "nsp": {k: round(float(v), 6) for k, v in sorted(self.nsp.items())},
         }
 
     @classmethod
@@ -136,7 +147,19 @@ class GateMetrics:
         m.sample_count = int(d.get("sample_count", 0))
         m.per_intent = dict(d.get("per_intent", {}))
         m.set_hash = str(d.get("set_hash", ""))
+        m.nsp = {k: float(v) for k, v in dict(d.get("nsp", {})).items()}
         return m
+
+    # ---- NSP 聚合读数（MARL 三个专家各自一份，取最差的那个）----
+    def _nsp_values(self, suffix: str) -> List[float]:
+        out: List[float] = []
+        for key, value in self.nsp.items():
+            if key == suffix or key.endswith("_" + suffix):
+                try:
+                    out.append(float(value))
+                except (TypeError, ValueError):
+                    pass
+        return out
 
 
 @dataclass
@@ -409,6 +432,26 @@ def evaluate_set(agent, samples: List[Dict[str, str]]) -> GateMetrics:
     )
 
 
+# NSP 探针里这几个键是「模型学没学到东西」的直接读数，报告只列它们
+NSP_CORE_KEYS = ("nsp_total", "nsp_infonce_acc", "nsp_rollout_err", "ema_drift")
+
+
+def probe_nsp(agent) -> Dict[str, float]:
+    """跑一次 NSP 确定性探针。
+
+    探针内部固定 RNG + eval，同一份权重两次调用逐位一致，所以它的读数
+    能和准确率一样写进基线。agent 没接 NSP（旧对象 / 构造失败）→ 空字典，
+    不能因为多了一项指标就把整个 gate 打成基础设施错误。
+    """
+    probe = getattr(agent, "nsp_probe", None)
+    if probe is None:
+        return {}
+    try:
+        return {k: round(float(v), 6) for k, v in probe().items()}
+    except Exception:
+        return {}
+
+
 class _torch_no_grad:
     """无 torch 环境下也能跑；有 torch 时进入 no_grad。"""
 
@@ -475,13 +518,38 @@ def save_baseline(metrics: GateMetrics,
 # ================================================================ gate 判定
 def check(metrics: GateMetrics, baseline: GateMetrics,
           thresholds: GateThresholds, set_hash: str,
-          agent_type: str = "single") -> GateResult:
+          agent_type: str = "single",
+          nsp_enforce: bool = True) -> GateResult:
     reasons: List[str] = []
 
     if metrics.sample_count < thresholds.min_samples:
         reasons.append(
             f"回归集样本不足：{metrics.sample_count} < {thresholds.min_samples}"
         )
+
+    # ---- NSP 潜空间：阈值配了才拦；配了却读不到数 → 指标本身失效，同样拦 ----
+    # nsp_enforce=False（agent 是新鲜随机初始化、没加载到 checkpoint）时只
+    # 记录不判定：随机权重的探针读数反映的是初始化分布而非训练质量，此时硬拦
+    # 只会让 CI（models/ 被 gitignore，checkout 后必然无权重）恒失败。
+    # 本地有训练权重时 nsp_enforce=True，阈值正常生效。
+    if nsp_enforce and thresholds.nsp_max_total is not None:
+        totals = metrics._nsp_values("nsp_total")
+        if not totals:
+            reasons.append("NSP 阈值已配置但探针没有 nsp_total 读数（指标失效）")
+        elif max(totals) > thresholds.nsp_max_total:
+            reasons.append(
+                f"NSP 总损失 {max(totals):.4f} 超过上限 "
+                f"{thresholds.nsp_max_total:.4f}"
+            )
+    if nsp_enforce and thresholds.nsp_min_infonce_acc is not None:
+        accs = metrics._nsp_values("nsp_infonce_acc")
+        if not accs:
+            reasons.append("NSP 阈值已配置但探针没有 nsp_infonce_acc 读数（指标失效）")
+        elif min(accs) < thresholds.nsp_min_infonce_acc:
+            reasons.append(
+                f"NSP InfoNCE 命中率 {min(accs):.4f} 低于下限 "
+                f"{thresholds.nsp_min_infonce_acc:.4f}"
+            )
 
     if baseline.set_hash and set_hash != baseline.set_hash:
         reasons.append(
@@ -566,11 +634,17 @@ def _build_agent(agent_type: str):
 def run_gate(update_baseline: bool = False,
              rebuild_set: bool = False,
              agent=None,
-             agent_type: str = "single") -> GateResult:
+             agent_type: str = "single",
+             nsp_max_total: Optional[float] = None,
+             nsp_min_infonce_acc: Optional[float] = None) -> GateResult:
     """执行 gate。``update_baseline=True`` 时跑完直接固化为新基线并返回通过。
 
     ``agent_type`` 选 ``single``（AgentRL）或 ``marl``（MetaAgent）。以前只测单体，
     MARL 侧的回归根本不会被门禁发现。
+
+    ``nsp_max_total`` / ``nsp_min_infonce_acc`` 仅在 ``update_baseline=True``
+    时生效：把本次阈值一起写入基线（只改阈值不改指标）。不传则沿用基线里的
+    旧阈值（首次固化时为 None = 只记录不判定）。
     """
     if agent_type not in AGENT_TYPES:
         return GateResult(passed=False, agent_type=agent_type,
@@ -604,11 +678,16 @@ def run_gate(update_baseline: bool = False,
         return GateResult(passed=False, agent_type=agent_type,
                           error=f"评估执行失败: {exc}")
     metrics.set_hash = set_hash
+    metrics.nsp = probe_nsp(agent)
 
     baseline, thresholds = load_baseline(agent_type)
     thresholds = thresholds or GateThresholds()
 
     if update_baseline:
+        if nsp_max_total is not None:
+            thresholds.nsp_max_total = float(nsp_max_total)
+        if nsp_min_infonce_acc is not None:
+            thresholds.nsp_min_infonce_acc = float(nsp_min_infonce_acc)
         save_baseline(metrics, thresholds, agent_type)
         return GateResult(passed=True, metrics=metrics,
                           baseline=metrics, thresholds=thresholds,
@@ -623,7 +702,11 @@ def run_gate(update_baseline: bool = False,
                   f"python regression_gate.py --agent {agent_type} --update-baseline",
         )
 
-    return check(metrics, baseline, thresholds, set_hash, agent_type)
+    # 新鲜随机初始化（没加载到 checkpoint）时 NSP 只记录不判定，见 check()。
+    # models/ 被 gitignore，CI checkout 后必然无权重；不断言这一点就会恒失败。
+    nsp_enforce = bool(getattr(agent, "loaded_from_disk", False))
+    return check(metrics, baseline, thresholds, set_hash, agent_type,
+                 nsp_enforce=nsp_enforce)
 
 
 # ================================================================ CLI
@@ -648,6 +731,17 @@ def _format_report(result: GateResult) -> str:
         b = result.baseline
         lines.append(f"基线  overall={b.overall_accuracy:.4f}  "
                      f"macro={b.macro_accuracy:.4f}  n={b.sample_count}")
+    if result.metrics and result.metrics.nsp:
+        lines.append("NSP   确定性探针（同权重复现；阈值未配置时只记录不判定）")
+        for key, value in sorted(result.metrics.nsp.items()):
+            if key.endswith(NSP_CORE_KEYS):
+                lines.append(f"   {key:<30} {value:.6f}")
+        base_nsp = result.baseline.nsp if result.baseline else {}
+        if base_nsp:
+            lines.append("基线 NSP")
+            for key, value in sorted(base_nsp.items()):
+                if key.endswith(NSP_CORE_KEYS):
+                    lines.append(f"   {key:<30} {value:.6f}")
     if result.reasons:
         lines.append("-" * 64)
         for reason in result.reasons:
@@ -668,15 +762,43 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--agent", choices=list(AGENT_TYPES), default="single",
                         help="被测架构：single=AgentRL（默认），marl=MetaAgent；"
                              "两者各有一份独立基线")
+    parser.add_argument("--nsp-max-total", type=float, default=None,
+                        help="与 --update-baseline 联用：把 NSP 总损失上限写入基线阈值")
+    parser.add_argument("--nsp-min-infonce-acc", type=float, default=None,
+                        help="与 --update-baseline 联用：把 InfoNCE 命中率下限写入基线阈值")
     parser.add_argument("--json", action="store_true", dest="as_json",
                         help="输出 JSON 报告")
     parser.add_argument("--quiet", action="store_true", help="只输出结论")
     args = parser.parse_args(argv)
 
+    # 只改阈值不改指标：不带 --update-baseline 时，两个 NSP 阈值参数只重写
+    # 基线文件里的 thresholds 段，metrics（准确率基线）原样保留。
+    # 用于“准确率基线不动、只让 NSP 从只记录变为硬判定”的场景。
+    if not args.update_baseline and (
+        args.nsp_max_total is not None or args.nsp_min_infonce_acc is not None
+    ):
+        baseline, thresholds = load_baseline(args.agent)
+        if baseline is None:
+            print(f"缺少基线文件，先跑 python regression_gate.py "
+                  f"--agent {args.agent} --update-baseline")
+            return EXIT_ERROR
+        thresholds = thresholds or GateThresholds()
+        if args.nsp_max_total is not None:
+            thresholds.nsp_max_total = float(args.nsp_max_total)
+        if args.nsp_min_infonce_acc is not None:
+            thresholds.nsp_min_infonce_acc = float(args.nsp_min_infonce_acc)
+        save_baseline(baseline, thresholds, args.agent)
+        print(f"已更新 {baseline_path(args.agent).name} 阈值："
+              f"nsp_max_total={thresholds.nsp_max_total}, "
+              f"nsp_min_infonce_acc={thresholds.nsp_min_infonce_acc}（指标未动）")
+        return EXIT_PASS
+
     try:
         result = run_gate(update_baseline=args.update_baseline,
                           rebuild_set=args.rebuild_set,
-                          agent_type=args.agent)
+                          agent_type=args.agent,
+                          nsp_max_total=args.nsp_max_total,
+                          nsp_min_infonce_acc=args.nsp_min_infonce_acc)
     except KeyboardInterrupt:
         return EXIT_ERROR
 

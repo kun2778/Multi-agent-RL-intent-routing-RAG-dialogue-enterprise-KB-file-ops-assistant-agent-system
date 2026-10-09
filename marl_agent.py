@@ -47,6 +47,7 @@ import copy
 import math
 import os
 import random
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -69,6 +70,7 @@ from transformer_arch import (
     TransformerSlotExtractionNetwork, EngramConditionalMemory,
 )
 from agent_rl import AgentRL, round_reward, should_clarify
+from nsp_latent import NSPLatentModule, apply_nsp_ablation, build_nsp
 from intent_shared import (
     SemanticFeatureExtractor,
     aggregate_votes,
@@ -91,6 +93,8 @@ from intent_shared import (
     ANALYSIS_KEYWORDS,
     SCAN_KEYWORDS,
     REPORT_KEYWORDS,
+    FILELIST_SEARCH_KEYWORDS,
+    looks_like_question,
     CONFIDENCE_THRESHOLD as SHARED_CONFIDENCE_THRESHOLD,
     ENGRAM_MIN_MARGIN as SHARED_ENGRAM_MIN_MARGIN,
     TASK_TEMPLATES as SHARED_TASK_TEMPLATES,
@@ -101,9 +105,10 @@ from intent_shared import (
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 DEFAULT_MARL_MODEL_PATH = os.path.join(MODEL_DIR, "marl_agents.pth")
 
-# 检查点格式：训练方法由 DQN 改为 MAPPO、观测由 268 改为 272，
+# 检查点格式：训练方法由 DQN 改为 MAPPO、观测由 268 改为 272（格式 2），
+# 主意图动作空间由 11 类扩到 12 类（格式 3，新增 filelist_search），
 # 旧检查点权重不兼容（加载时忽略并重新初始化）。
-MARL_CKPT_FORMAT = 2
+MARL_CKPT_FORMAT = 3
 
 SEM_DIM = 256
 STATE_DIM = 12
@@ -123,6 +128,12 @@ EXP3_FLOOR = 0.25                         # 源权重下限，防止单路被饿
 COORD_BONUS = 0.35                        # 与最终共识一致的协调奖励
 H2H_BONUS = 0.30                          # 联盟 head-to-head 胜负奖励
 OPP_PROB = 0.35                           # 训练时施加查询扰动（对手生成）的概率
+OPPONENT_SEED = 1701                      # 对手采样用局部 RNG 的种子（不碰全局 random）
+
+# ---- NSP 潜空间（实现单副本在 nsp_latent.py，三专家各挂一份实例）----
+SLOT_NSP_ACTION_DIM = 64   # 五头动作压成一个码：2×2×7×6×5=840 → 64 维码空间
+NSP_IMAGINE_ALPHA = 0.20   # 想象 Q 混入 critic bootstrap 的最终权重
+NSP_IMAGINE_WARMUP = 50    # 前 N 次 PPO 更新内 α=0：先让 critic 站稳再掺想象
 
 
 # ================================================================
@@ -329,19 +340,25 @@ class League:
     def __len__(self):
         return len(self.players)
 
-    def sample(self) -> Optional[LeaguePlayer]:
-        """按胜率加权采样对手，25% 概率均匀采样（保证多样性、避免锁定单一强手）。"""
+    def sample(self, rng: Optional[random.Random] = None
+               ) -> Optional[LeaguePlayer]:
+        """按胜率加权采样对手，25% 概率均匀采样（保证多样性、避免锁定单一强手）。
+
+        ``rng`` 缺省用全局 ``random``；训练侧传局部 RNG，避免对手切换打乱
+        ``test_marl`` / ``regression_gate`` 依赖的确定性随机流。
+        """
         if not self.players:
             return None
-        if random.random() < 0.25:
-            return random.choice(self.players)
+        r = rng if rng is not None else random
+        if r.random() < 0.25:
+            return r.choice(self.players)
         weights = [max(p.win_rate, 0.05) for p in self.players]
         total = sum(weights)
-        r = random.random() * total
+        roll = r.random() * total
         acc = 0.0
         for p, w in zip(self.players, weights):
             acc += w
-            if r <= acc:
+            if roll <= acc:
                 return p
         return self.players[-1]
 
@@ -505,12 +522,36 @@ class PolicyAgent:
 
     hp: AgentHParams
 
-    def __init__(self, hp: AgentHParams, encoder: ObservationEncoder):
+    def __init__(self, hp: AgentHParams, encoder: ObservationEncoder,
+                 nsp_action_dim: int):
         self.hp = hp
         self.encoder = encoder
         self.critic = CriticEnsemble(OBS_DIM + CTX_DIM, ENSEMBLE_K, seed=hp.seed + 13)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=hp.critic_lr, eps=1e-5)
-        self.optimizer = optim.Adam(self.q_network.parameters(), lr=hp.lr, eps=1e-5)
+        # NSP 潜空间：三专家各挂一份**实例**，实现只有一份（nsp_latent.py），
+        # duplicate_gate 会拦掉复制第二份的写法。build_nsp 在 fork_rng 里构造，
+        # 不会扰动后面 _init_network 读的全局随机流（回归 gate 依赖那条流）。
+        self.nsp = build_nsp(self.q_network.transformer, None,
+                             action_dim=nsp_action_dim, d_model=128,
+                             num_actions=nsp_action_dim, seed=hp.seed)
+        self._rebuild_optimizer()
+
+    def _rebuild_optimizer(self) -> None:
+        """策略优化器覆盖 q_network + NSP 可训练参数。
+
+        必须是同一份优化器：NSP 的损失要能把梯度传回共享编码器
+        （否则潜空间学不到东西），而 q_network 的参数结构又不能动
+        （``load_state_dict`` 是 strict 的），所以 NSP 只能以独立模块的身份
+        并进这份优化器。子类在 ``_init_network`` 之后再调一次，
+        让目标编码器跟重新初始化过的在线编码器对齐。
+        """
+        self.optimizer = optim.Adam(
+            list(self.q_network.parameters()) + self.nsp.trainable_parameters(),
+            lr=self.hp.lr, eps=1e-5)
+        self.nsp.refresh_target()
+
+    def _nsp_params(self) -> List[nn.Parameter]:
+        return list(self.q_network.parameters()) + self.nsp.trainable_parameters()
 
     # ---- 观测 ----
     def encode(self, sem: np.ndarray, state_vec: np.ndarray, aux: np.ndarray) -> np.ndarray:
@@ -581,13 +622,13 @@ class PolicyAgent:
 
 
 class IntentPolicy(PolicyAgent):
-    """主意图 Agent：11 类意图，观测量 = 272 维（含联盟对手上下文）。"""
+    """主意图 Agent：12 类意图，观测量 = 272 维（含联盟对手上下文）。"""
 
     INTENT_LIST = [
         IntentType.ADD_FILE, IntentType.DELETE_FILE, IntentType.MODIFY_FILE,
         IntentType.REFACTOR, IntentType.QUERY, IntentType.DEEP_SEARCH, IntentType.VAGUE,
         IntentType.FILE_ANALYSIS, IntentType.FILE_SCAN, IntentType.REPORT_GENERATE,
-        IntentType.FILENAME_QUERY,
+        IntentType.FILENAME_QUERY, IntentType.FILELIST_SEARCH,
     ]
 
     def __init__(self, hp: AgentHParams = INTENT_HP):
@@ -595,9 +636,10 @@ class IntentPolicy(PolicyAgent):
             OBS_DIM, 128, len(self.INTENT_LIST), num_loops=4)
         self.action_map = {i: it for i, it in enumerate(self.INTENT_LIST)}
         self.reverse_map = {it: i for i, it in self.action_map.items()}
-        super().__init__(hp, ObservationEncoder(hp.obs_seed, hp.mask_rate))
+        super().__init__(hp, ObservationEncoder(hp.obs_seed, hp.mask_rate),
+                         nsp_action_dim=len(self.INTENT_LIST))
         _init_network(self.q_network, hp.init_scheme, hp.init_gain, hp.seed)
-        self.optimizer = optim.Adam(self.q_network.parameters(), lr=hp.lr, eps=1e-5)
+        self._rebuild_optimizer()
 
         # 规则兜底（与单 Agent 的关键词规则同源，但权重由 MetaAgent 学习）。
         # 关键词表来自 intent_shared —— 以前两份逐字副本各自演化，只改一边必漂移。
@@ -616,6 +658,9 @@ class IntentPolicy(PolicyAgent):
             # 短语级 FILENAME_QUERY_KEYWORDS，两者粒度不同，直接替换会漏匹配。
             IntentType.FILENAME_QUERY: ["最近", "最新", "文件名搜索", "搜索文件名",
                                          "查找文件", "recent", "latest", "newly"],
+            # FILELIST_SEARCH：路径语境词（路径下/目录下/文件清单…），
+            # 与 FILENAME_QUERY 的时间语境词、FILE_SCAN 的遍历词区分开。
+            IntentType.FILELIST_SEARCH: list(FILELIST_SEARCH_KEYWORDS),
         }
 
     def rule_predict(self, query: str) -> Optional[IntentType]:
@@ -636,6 +681,11 @@ class IntentPolicy(PolicyAgent):
             if score > 0:
                 scores[intent] = score
         if not scores:
+            # 关键词证据完全缺席时的疑问句式兜底（此前直接弃权 → 神经路盲猜）。
+            # 只兜疑问句：寒暄不进规则路（规则源 EXP3 权重高，vague 高置信
+            # 会反触发 VAGUE 分支的降级，寒暄由检索语料 + 神经路覆盖）。
+            if looks_like_question(q):
+                return IntentType.QUERY
             return None
         return max(scores, key=scores.get)
 
@@ -658,9 +708,10 @@ class SubIntentPolicy(PolicyAgent):
             OBS_DIM, 128, len(self.SUBINTENT_LIST), num_loops=4)
         self.action_map = {i: s for i, s in enumerate(self.SUBINTENT_LIST)}
         self.reverse_map = {s: i for i, s in self.action_map.items()}
-        super().__init__(hp, ObservationEncoder(hp.obs_seed, hp.mask_rate))
+        super().__init__(hp, ObservationEncoder(hp.obs_seed, hp.mask_rate),
+                         nsp_action_dim=len(self.SUBINTENT_LIST))
         _init_network(self.q_network, hp.init_scheme, hp.init_gain, hp.seed)
-        self.optimizer = optim.Adam(self.q_network.parameters(), lr=hp.lr, eps=1e-5)
+        self._rebuild_optimizer()
 
         self.priority_keywords = {
             QuerySubIntent.QUERY_OCR: ["识别", "ocr", "文字识别", "截屏", "截图"],
@@ -694,9 +745,10 @@ class SlotPolicy(PolicyAgent):
 
     def __init__(self, hp: AgentHParams = SLOT_HP):
         self.q_network = TransformerSlotExtractionNetwork(OBS_DIM, 128, num_loops=4)
-        super().__init__(hp, ObservationEncoder(hp.obs_seed, hp.mask_rate))
+        super().__init__(hp, ObservationEncoder(hp.obs_seed, hp.mask_rate),
+                         nsp_action_dim=SLOT_NSP_ACTION_DIM)
         _init_network(self.q_network, hp.init_scheme, hp.init_gain, hp.seed)
-        self.optimizer = optim.Adam(self.q_network.parameters(), lr=hp.lr, eps=1e-5)
+        self._rebuild_optimizer()
 
         import re
         self.file_pattern = re.compile(
@@ -856,6 +908,9 @@ class MetaAgent:
         self.query_opponent = QueryOpponent()
         self._opp_player: Optional[LeaguePlayer] = None
         self._opp_active = False
+        # 对手采样用局部 RNG：全局 random 一旦被消费，test_marl/regression_gate
+        # 的确定性断言就会和改造前错位
+        self._opp_rng = random.Random(OPPONENT_SEED)
 
         # ---- 协调：源权重（EXP3 在线学习，合作场景下多样性必须配合协调机制）----
         self.source_weights: Dict[str, float] = {n: 1.0 for n in SOURCE_NAMES}
@@ -871,6 +926,13 @@ class MetaAgent:
         self.reward_scale = RunningScale()
         self.replay_buffer: List[Transition] = []
         self.training_step = 0
+        # NSP 想象分量按 PPO 更新次数 ramp-up：早期桥还没标定好，
+        # 直接掺进 bootstrap 会把 critic 带偏。
+        self.nsp_imagine_alpha = NSP_IMAGINE_ALPHA
+        # 消融复位基准与当前档位（见 nsp_latent.ABLATION_SPECS）
+        self.nsp_imagine_alpha_default = NSP_IMAGINE_ALPHA
+        self.nsp_ablate = "none"
+        self.nsp_imagine_warmup = NSP_IMAGINE_WARMUP
         # 回归 gate / 评测用：True 时 classify_intent 关闭策略采样，结果可复现
         self.deterministic = False
         self._steps_since_update = 0
@@ -941,6 +1003,13 @@ class MetaAgent:
             "critic_slot": self.slot_agent.critic.state_dict(),
             "critic_slot_opt": self.slot_agent.critic_optimizer.state_dict(),
             "engram": self.engram.state_dict(),
+            "intent_nsp": self.intent_agent.nsp.state_dict(),
+            "subintent_nsp": self.subintent_agent.nsp.state_dict(),
+            "slot_nsp": self.slot_agent.nsp.state_dict(),
+            "nsp_enabled": all(a.nsp.enabled for a in self._agents.values()),
+            "nsp_ablate": self.nsp_ablate,
+            "nsp_imagine_alpha": self.nsp_imagine_alpha,
+            "nsp_imagine_warmup": self.nsp_imagine_warmup,
             "league": self.league.state_dict(),
             "query_opponent": self.query_opponent.state_dict(),
             "source_weights": dict(self.source_weights),
@@ -973,6 +1042,39 @@ class MetaAgent:
         _load_nn(self.slot_agent.q_network, "slot_net")
         _load_nn(self.slot_agent.critic, "critic_slot")
         _load_nn(self.engram, "engram")
+        # NSP 必须在 q_network 之后加载：缺 key 时 refresh_target() 要拿
+        # 刚载入的在线编码器当目标，否则目标副本会停在初始化权重上。
+        nsp_enabled = bool(ckpt.get("nsp_enabled", True))
+        for agent, key in ((self.intent_agent, "intent_nsp"),
+                           (self.subintent_agent, "subintent_nsp"),
+                           (self.slot_agent, "slot_nsp")):
+            nsp = getattr(agent, "nsp", None)
+            if nsp is None:
+                continue
+            if key in ckpt:
+                try:
+                    nsp.load_state_dict(ckpt[key])
+                except Exception:
+                    nsp.refresh_target()
+            else:
+                nsp.refresh_target()
+            if nsp_enabled:
+                nsp.enable()
+            else:
+                nsp.disable()
+        # 消融档位是权威来源；旧 checkpoint 没有该键时退回 nsp_enabled
+        if "nsp_imagine_alpha" in ckpt:
+            self.nsp_imagine_alpha_default = float(ckpt["nsp_imagine_alpha"])
+        if "nsp_ablate" in ckpt:
+            try:
+                apply_nsp_ablation(self, ckpt["nsp_ablate"])
+            except ValueError:
+                print(f"  [MARL] 未知 NSP 消融档位 {ckpt['nsp_ablate']!r}，按 none 加载。")
+                apply_nsp_ablation(self, "none")
+        else:
+            apply_nsp_ablation(self, "none" if nsp_enabled else "off")
+        self.nsp_imagine_warmup = int(
+            ckpt.get("nsp_imagine_warmup", self.nsp_imagine_warmup))
         for agent, qk, ck, ok, cok in (
             (self.intent_agent, "intent_q", "critic_intent", "intent_opt", "critic_intent_opt"),
             (self.subintent_agent, "subintent_q", "critic_subintent", "subintent_opt", "critic_subintent_opt"),
@@ -1014,11 +1116,14 @@ class MetaAgent:
 
     def _intent_aux(self, critic_unc: float) -> np.ndarray:
         """意图 Agent 的辅助通道：联盟对手上下文（对手建模 → 处理非平稳性）。"""
-        if self._opp_active and self._opp_player is not None:
+        # 确定性模式（回归 gate / 测试）把对手通道钉成中性值：
+        # 否则「同一个进程先训练后评测」会因为对手切换跑出不同的预测。
+        if self.deterministic or not (
+                self._opp_active and self._opp_player is not None):
+            strength, opp_id = 0.5, 0.5      # 中性/自对弈上下文
+        else:
             strength = float(self._opp_player.win_rate)
             opp_id = float((self._opp_player.pid % 89) / 89.0)
-        else:
-            strength, opp_id = 0.5, 0.5      # 中性/自对弈上下文
         league_n = min(len(self.league) / max(MAX_LEAGUE, 1), 1.0)
         return np.array([strength, opp_id, league_n, float(np.clip(critic_unc, 0.0, 1.0))],
                         dtype=np.float32)
@@ -1214,6 +1319,10 @@ class MetaAgent:
             stats["league_conf"] = lg_conf
 
         # --- 4) 规则 ---
+        # 注意：LLM 掉线时不要在这里临时加权本地路 —— 检索路权重从 0.50
+        # 抬到 0.75 曾把「你好」的 vague 置信度推过 p*，反触发 VAGUE 分支
+        # 的「高置信 → 降级 query」。降级路径的识别能力靠规则句式兜底与
+        # 检索语料增强，不靠调权重。
         rule_intent = self.intent_agent.rule_predict(query)
         if rule_intent is not None:
             rule_weight = 0.55 if use_llm else 0.85
@@ -1285,6 +1394,18 @@ class MetaAgent:
         final_intent = self._semantic_conflict_guard(query, final_intent, scores)
         self._last_confidence = final_conf
         return final_intent, final_conf
+
+    def _refresh_opponent(self) -> Optional[LeaguePlayer]:
+        """按胜率换一个联盟对手，喂给对手建模通道与 head-to-head 奖励。
+
+        每次 rollout 刷一次：联盟只有 1 个成员时它仍是「训练前的自己」的
+        冻结快照，照样是合法对手（训练后就不同了）。走局部 RNG，
+        不消费全局 ``random``；只有训练路径 ``_ppo_update`` 会调它，
+        因此推断路径的观测恒定为中性值，回归 gate 不受影响。
+        """
+        self._opp_player = self.league.sample(self._opp_rng)
+        self._opp_active = self._opp_player is not None
+        return self._opp_player
 
     @torch.no_grad()
     def _opp_predict(self, obs: np.ndarray) -> int:
@@ -1584,7 +1705,159 @@ class MetaAgent:
         self.training_step += 1
         if self.training_step % LEAGUE_INTERVAL == 0:
             self._league_step()
+        # 每个 rollout 换一次对手：非平稳性要够密，否则策略只学会打一个旧快照
+        self._refresh_opponent()
         return logs
+
+    # ---------------------------------------------------------- NSP 潜空间
+    def _imagine_alpha(self) -> float:
+        """想象分量权重：前 warmup 次更新内为 0，之后线性升到配置值。"""
+        warmup = max(int(self.nsp_imagine_warmup), 0)
+        if warmup == 0:
+            return float(self.nsp_imagine_alpha)
+        ramp = min(1.0, self.training_step / float(warmup))
+        return float(self.nsp_imagine_alpha) * ramp
+
+    def nsp_probe(self) -> Dict[str, float]:
+        """三专家的确定性 NSP 探针（键带角色前缀，仅前向、不含训练态指标）。
+
+        固定文本池 → 固定观测 → 固定动作（argmax，不采样）→ 固定指标，
+        因此 regression gate 的报告、MCP 量化工具与 ``--ablate-nsp`` 消融
+        读到的是同一份可复现数据。
+
+        分布对齐：MARL 自博弈同样全是 ``done=True`` 自循环，下一观测必须
+        用自身（``next = obs``），与单体 ``AgentRL.nsp_probe`` 一致。
+        链式 ``roll`` 会引入训练从未见过的跨文本跳变，训练好的权重也会
+        读出比随机还差的 InfoNCE（单体侧实测自循环 0.625 vs 链式 0.0）。
+        """
+        out: Dict[str, float] = {}
+        texts = [t for t in AgentRL.EVAL_REAL_SAMPLES.values() if t]
+        if not texts:
+            return out
+
+        state = AgentState()
+        state.increment_round()
+        # 冻结时间维度：state_vector[10] = elapsed_time / retrieval_budget，
+        # 预算给 1e9 时该位仍是 ~1e-11 的活数，探针会随墙钟漂移；
+        # 用 inf 让它精确等于 0。
+        state.time_started = time.time()
+        state.retrieval_budget = float("inf")
+
+        for role, tag in (("intent", "intent"), ("subintent", "subintent"),
+                          ("slot", "slot")):
+            agent = self._agents.get(role)
+            nsp = getattr(agent, "nsp", None)
+            if agent is None or nsp is None:
+                continue
+            try:
+                obs = np.stack([self._obs(role, q, state) for q in texts])
+                ctx = np.stack([self._central_context(q, state, {})
+                                for q in texts])
+            except Exception:
+                continue
+
+            was_training = agent.critic.training
+            agent.critic.eval()
+            try:
+                with torch.no_grad():
+                    obs_t = torch.FloatTensor(obs)
+                    ctx_t = torch.FloatTensor(ctx)
+                    actions = torch.as_tensor(
+                        [agent.act(obs[i], explore=False)[0]
+                         for i in range(len(obs))], dtype=torch.int64)
+                    q_next, _ = agent.critic(
+                        torch.cat([obs_t, ctx_t], dim=-1), "min")
+                    # 自循环：见本函数 docstring（训练只见过 s' == s）。
+                    next_t = obs_t
+                    stats = nsp.probe(obs_t, actions, next_t, q_next)
+            except Exception:
+                continue
+            finally:
+                if was_training:
+                    agent.critic.train()
+
+            for key, value in stats.items():
+                out[f"{tag}_{key}"] = float(value)
+        return out
+
+    def nsp_metrics_snapshot(self) -> Dict[str, float]:
+        """三专家训练期滚动指标（非确定性，仅供观测，不进 gate 判定）。"""
+        out: Dict[str, float] = {}
+        for role, tag in (("intent", "intent"), ("subintent", "subintent"),
+                          ("slot", "slot")):
+            agent = self._agents.get(role)
+            nsp = getattr(agent, "nsp", None) if agent is not None else None
+            if nsp is None:
+                continue
+            for key, value in nsp.metrics_snapshot().items():
+                out[f"{tag}_{key}"] = float(value)
+        return out
+
+    @staticmethod
+    def _nsp_segments(done: torch.Tensor, horizon: int) -> List[int]:
+        """按 ``done`` 切出未终止的连续段，返回各段起点（最多 4 段）。
+
+        只有「一段内至少 H+1 步」才够自由运行 H 步 rollout；段太短直接跳过，
+        不用填充去凑，否则等于在编造转移。
+        """
+        n = int(done.numel())
+        starts: List[int] = []
+        start = 0
+        for i in range(n + 1):
+            if i == n or bool(done[i]):
+                if i - start >= horizon + 1:
+                    starts.append(start)
+                start = i + 1
+        return starts[:4]
+
+    def _nsp_update(self, agent: PolicyAgent, obs: torch.Tensor,
+                    actions: torch.Tensor, next_obs: torch.Tensor,
+                    done: torch.Tensor,
+                    target_vec: torch.Tensor) -> Dict[str, float]:
+        """专家的 NSP 监督步：1 步 NLL/KL/InfoNCE/桥标定 + H 步 rollout。
+
+        必须放在 PPO/Critic 之后：PPO 循环里 ``optimizer.zero_grad()`` 已经
+        消费完策略梯度，这里单独走 zero→backward→step。整个过程包在
+        ``fork_rng`` 里 —— NSP 的 dropout 与转移头采样会吃掉全局随机数，
+        不还原的话 test_marl / regression_gate 的随机流就会和改造前错位。
+        """
+        nsp: Optional[NSPLatentModule] = getattr(agent, "nsp", None)
+        if nsp is None or not nsp.enabled:
+            return {}
+        horizon = max(int(nsp.horizon), 1)
+        with torch.random.fork_rng(devices=[]):
+            agent.optimizer.zero_grad()
+            stats = nsp.supervise(obs, actions, next_obs, target_vec.detach())
+
+            groups = self._nsp_segments(done, horizon)
+            if groups:
+                s_idx = torch.cat([torch.arange(g, g + horizon + 1)
+                                   for g in groups])
+                a_idx = torch.cat([torch.arange(g, g + horizon)
+                                   for g in groups])
+                g_count = len(groups)
+                seg_states = obs.index_select(0, s_idx).reshape(
+                    g_count, horizon + 1, -1)
+                seg_next = next_obs.index_select(0, s_idx).reshape(
+                    g_count, horizon + 1, -1)
+                seg_actions = actions.index_select(0, a_idx).reshape(
+                    (g_count, horizon) + tuple(actions.shape[1:]))
+                seg = nsp.segment_losses(seg_states, seg_actions, seg_next)
+                if seg:
+                    stats["nsp_total"] = stats["nsp_total"] + seg["nsp_total"]
+                    stats["nsp_rollout_err"] = seg["nsp_rollout_err"]
+
+            stats["nsp_total"].backward()
+            torch.nn.utils.clip_grad_norm_(agent._nsp_params(),
+                                           agent.hp.max_grad_norm)
+            agent.optimizer.step()
+            nsp.update_ema()
+
+            live = {k: float(v) for k, v in stats.items()}
+            live["nsp_imagine_alpha"] = self._imagine_alpha()
+            nsp.metrics.update(live)
+            return {k: round(v, 6)
+                    for k, v in nsp.metrics.mean().items()}
 
     def _update_agent(self, agent: PolicyAgent, trs: List[Transition]) -> Dict[str, float]:
         hp = agent.hp
@@ -1605,6 +1878,10 @@ class MetaAgent:
         with torch.no_grad():
             v, v_std = agent.critic(obs_ctx, "min")
             nv, _ = agent.critic(next_obs_ctx, "min")
+            # 想象分量：把「预测出来的下一状态潜变量 → 价值桥」按 α 混进
+            # bootstrap。α 在 warmup 内恒为 0，此时逐位等价于改造前的 GAE。
+            nv, _ = agent.nsp.imagine_q_target(obs, actions, nv,
+                                               self._imagine_alpha())
             nv = nv * (1.0 - done)
             delta = rew + hp.gamma * nv - v
             adv = torch.zeros_like(rew)
@@ -1657,7 +1934,10 @@ class MetaAgent:
         torch.nn.utils.clip_grad_norm_(agent.critic.parameters(), hp.max_grad_norm)
         agent.critic_optimizer.step()
 
-        return {
+        # --- NSP 潜空间监督（在策略/Critic 之后，见 _nsp_update 的注释）---
+        nsp_stats = self._nsp_update(agent, obs, actions, nobs, done, ret)
+
+        metrics = {
             "steps": float(bsz),
             "adv_mean": float(adv.mean()),
             "ret_mean": float(ret.mean()),
@@ -1666,6 +1946,8 @@ class MetaAgent:
             "critic_std": float(v_std.mean()),
             "epochs": float(epochs_run),
         }
+        metrics.update(nsp_stats)
+        return metrics
 
     # ---------------------------------------------------------- 联盟
     def _league_step(self):

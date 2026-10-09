@@ -7296,3 +7296,23 @@ find newly created files,filename_query
 查找最近一个月创建的文件,filename_query
 最近使用的文档有哪些,filename_query
 最近下载的文件在哪里,filename_query
+为我找出C:\Steam路径下的steam注册表文件,filelist_search
+列出 D:\data 目录下的所有文件,filelist_search
+帮我找出 E:\backup 下的 txt 文件,filelist_search
+C:\logs 目录下有哪些日志文件,filelist_search
+扫描 C:\Steam 目录下的文件清单,filelist_search
+找出 D:\game 目录下的注册表文件,filelist_search
+把该路径下的文件列表列出来,filelist_search
+列出这个目录下的配置文件,filelist_search
+查找 C:\Program Files 下的 exe 文件,filelist_search
+列出 D:\photos 目录下的图片文件,filelist_search
+帮我列出 F:\downloads 文件夹下的压缩包,filelist_search
+找出 C:\Users\Public 下的快捷方式文件,filelist_search
+查看该路径下的文件清单,filelist_search
+列出 C:\temp 下最近一天修改的文件,filelist_search
+在 D:\backup 目录下列出所有 csv 文件,filelist_search
+find files under C:\Steam,filelist_search
+list all files in that directory,filelist_search
+locate registry files under C:\Steam,filelist_search
+列出目标目录下的所有文件,filelist_search
+帮我列出指定路径下的文件清单,filelist_search

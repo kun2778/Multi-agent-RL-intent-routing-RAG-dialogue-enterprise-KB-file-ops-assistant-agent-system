@@ -20,6 +20,7 @@ class IntentType(Enum):
     FILE_SCAN = "file_scan"          # 文件扫描（只读）
     REPORT_GENERATE = "report_generate"  # 生成审查报告
     FILENAME_QUERY = "filename_query"    # 按名称搜索文件（时间筛选）
+    FILELIST_SEARCH = "filelist_search"  # 按路径+条件列出/找出文件（ReAct 扫描）
 
 
 class QuerySubIntent(Enum):
@@ -80,6 +81,7 @@ class RoutingPath(Enum):
     QUERY_FILE_ANALYZE = "query_file_analyze"
     QUERY_READONLY_REPORT = "query_readonly_report"
     FILENAME_QUERY = "filename_query"
+    FILELIST_SEARCH = "filelist_search"
 
 
 SHORT_LABELS = {
@@ -94,6 +96,7 @@ SHORT_LABELS = {
     IntentType.FILE_SCAN: "文件扫描",
     IntentType.REPORT_GENERATE: "报告生成",
     IntentType.FILENAME_QUERY: "文件名搜索",
+    IntentType.FILELIST_SEARCH: "文件列表搜索",
 }
 
 QUERY_SUBINTENT_LABELS = {

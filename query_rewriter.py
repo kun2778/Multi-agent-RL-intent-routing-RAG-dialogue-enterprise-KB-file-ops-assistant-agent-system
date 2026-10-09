@@ -58,6 +58,13 @@ class QueryRewriter:
             "recent files", "find files", "search files",
             "newly added", "recently modified", "recently created",
         ],
+        "filelist_search": [
+            "路径下", "目录下", "文件夹下", "路径下的", "目录下的", "文件夹下的",
+            "该路径", "此目录", "这个目录", "文件列表", "文件清单",
+            "列出文件", "找出文件", "查找路径", "按路径查找",
+            "list files", "list directory", "file list", "file listing",
+            "under the path", "in that directory",
+        ],
     }
 
     FILE_RE = re.compile(r"[A-Za-z]:\\.+?\.[A-Za-z0-9]{1,6}|[\w.\-\\/]+\.[A-Za-z0-9]{1,6}", re.IGNORECASE)

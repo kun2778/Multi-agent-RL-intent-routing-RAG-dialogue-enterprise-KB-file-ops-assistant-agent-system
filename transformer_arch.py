@@ -9,9 +9,10 @@
   6. LoopedTransformer      — 多次循环复用同一块 (T=6)
   7. TaskAwareLoopedTransformer — 任务感知版
   8. EngramConditionalMemory — 8-slot条件记忆, 解决幻觉 (Agent层面使用)
-  9. NSPHead                — Next State Prediction 辅助任务头
+  9. NSPHead                — 旧版 NSP 辅助头 (已弃用: 训练侧改用 nsp_latent.py,
+                              本类仅为旧 checkpoint 的 nsp_head.* key 兼容保留, 不可删除)
   10. TransformerDuelingQNetwork        — 单agent Dueling Q-network
-  11. TransformerDuelingQNetworkWithNSP — 单agent Q-network + NSP
+  11. TransformerDuelingQNetworkWithNSP — 单agent Q-network + NSP (nsp_head 已不参与训练)
   12. TransformerClassificationHead     — 单agent 分类头
   13. TransformerIntentQNetwork         — 多agent 主意图 Q-network
   14. TransformerSubIntentQNetwork      — 多agent 子意图 Q-network
@@ -459,10 +460,18 @@ class EngramConditionalMemory(nn.Module):
 
 
 # ================================================================
-#  6. NSPHead — Next State Prediction 辅助任务头
+#  6. NSPHead — Next State Prediction 辅助任务头（已弃用，勿删）
 # ================================================================
 class NSPHead(nn.Module):
     """Next State Prediction 头 — 预测环境动态。
+
+    .. deprecated::
+        训练侧已改用 ``nsp_latent.NSPLatentModule``（EMA 目标 + InfoNCE +
+        随机转移头 + H 步 rollout + 想象 Q）。本类保留是为了让旧 checkpoint
+        里 ``q_network.nsp_head.*`` 的 key 仍能 strict 加载；
+        ``train_step`` / ``_nsp_update`` 已不再调用它。
+        删除本类会让所有既有 ``load_state_dict`` 失败（strict=True），
+        因此迁移完成前不可移除。
 
     设计:
       - 输入: 当前状态嵌入 (d_model) + 动作嵌入 (d_action → d_model)

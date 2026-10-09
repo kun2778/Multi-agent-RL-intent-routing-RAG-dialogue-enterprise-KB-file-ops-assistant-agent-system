@@ -1,5 +1,6 @@
 {
-  "created_at": "2026-09-29T17:25:50",
+  "created_at": "2026-10-09T10:20:09",
+  "agent_type": "single",
   "regression_set": "eval\\regression\\regression.jsonl",
   "metrics": {
     "overall_accuracy": 0.774194,
@@ -164,7 +165,8 @@
         ]
       }
     },
-    "set_hash": "3909d7de82a792e7afdfc544203c16a50c4d1bbb3d6269a6ad741e9321f0f3a0"
+    "set_hash": "3909d7de82a792e7afdfc544203c16a50c4d1bbb3d6269a6ad741e9321f0f3a0",
+    "nsp": {}
   },
   "thresholds": {
     "tolerance": 0.02,
@@ -172,7 +174,9 @@
     "min_per_intent_accuracy": 0.5,
     "min_per_intent_accuracy_hard": 0.05,
     "min_intent_samples": 5,
-    "min_samples": 50
+    "min_samples": 50,
+    "nsp_max_total": 8.0,
+    "nsp_min_infonce_acc": 0.4
   },
   "note": "由 regression_gate.py --update-baseline 生成，请勿手工编辑"
 }

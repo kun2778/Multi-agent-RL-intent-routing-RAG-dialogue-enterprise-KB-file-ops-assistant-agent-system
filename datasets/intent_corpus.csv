@@ -3519,3 +3519,121 @@ find newly created files,filename_query
 查找最近一个月创建的文件,filename_query
 最近使用的文档有哪些,filename_query
 最近下载的文件在哪里,filename_query
+message window还是token window,query
+message window和token window有什么区别,query
+context window和token window哪个大,query
+window和thread的区别是什么,query
+API key和token有什么区别,query
+我该用 message window还是token window,query
+什么时候需要用 message window,query
+这个功能用 stack还是queue 实现好,query
+我应该学 python还是java,query
+用 REST还是gRPC 比较好,query
+vscode和pycharm哪个好用,query
+强化学习和监督学习的区别是什么,query
+什么是attention机制,query
+transformer为什么比rnn好,query
+GPU和CPU训练差多少,query
+batch size一般设多大合适,query
+学习率调大好还是调小好,query
+为什么我的loss不下降,query
+gradient explosion怎么处理,query
+早停法是什么时候用的,query
+数据集划分比例一般是多少,query
+现在几点了,query
+今天周几,query
+这句中文用英文怎么说,query
+中英文混排的句子怎么分词,query
+docker和virtualbox哪个省资源,query
+how to fix this bug,query
+what is a token in llm,query
+why is my python so slow,query
+is python better than java for beginners,query
+can I use docker on windows,query
+which one is faster sql or nosql,query
+推荐个好用的编辑器,query
+今天吃什么好,query
+帮我查下 message window 是什么意思,query
+你好呀,vague
+嗨你好,vague
+在吗在吗,vague
+hello there,vague
+hi buddy,vague
+hey there,vague
+谢谢你,vague
+感谢感谢,vague
+辛苦了辛苦了,vague
+晚安好梦,vague
+早上好呀,vague
+中午好,vague
+吃饭了吗,vague
+讲个冷笑话,vague
+太无聊了,vague
+今天好累啊,vague
+你能做什么呀,vague
+介绍一下你自己吧,vague
+你是AI吗,vague
+随便聊聊天气吧,vague
+thanks a lot,vague
+good morning,vague
+good night,vague
+add一个文件叫todo.txt,add_file
+create file demo.py with print hello,add_file
+新建一个 file 记录日志,add_file
+帮我add一个 config.json配置文件,add_file
+write一个 readme介绍项目,add_file
+新建文件 meeting notes 内容为 周会讨论,add_file
+添加一个文件备忘.txt 内容为 买牛奶,add_file
+生成一个 requirements 文件,add_file
+add note.txt please,add_file
+创建 file summary.md 内容为 本周总结,add_file
+我要新建一个文件叫 data.csv,add_file
+帮我写个文件 log.txt 内容为 启动成功,add_file
+add 文件 notes.md 内容为 hello world,add_file
+新建一个文本文档叫计划.txt,add_file
+create a blank file temp.txt,add_file
+delete掉 temp.txt 这个文件,delete_file
+remove file old.log,delete_file
+把 backup.zip 删了,delete_file
+删除那个叫 cache.tmp 的文件,delete_file
+帮我delete一下 draft.docx,delete_file
+rm那个 test.py,delete_file
+删掉没用的文件bak.txt,delete_file
+delete掉昨天建的tmp文件,delete_file
+把不用的文件remove掉,delete_file
+清一下 temp 目录里的文件,delete_file
+update config.yaml 加一行超时设置,modify_file
+修改 app.py 的端口为 8080,modify_file
+edit readme.md 把版本改成2.0,modify_file
+帮我改一下 main.py 的注释,modify_file
+更新 notes.txt 内容为 新计划,modify_file
+change file setting.ini 的超时时间,modify_file
+把 log.txt 内容改成 启动失败,modify_file
+modify the content of todo.txt 为 完成测试,modify_file
+编辑 doc.txt 加一句总结,modify_file
+更新一下 plan.md 的截止日期,modify_file
+把这些文件分一下类,refactor
+整理一下桌面的文件,refactor
+归类一下下载文件夹,refactor
+按类型整理这些文件,refactor
+organize my files by type,refactor
+重构一下目录结构,refactor
+把图片和文档分开存放,refactor
+文件太乱了帮我整理,refactor
+分类归档这些资料,refactor
+重命名整理这批文件,refactor
+compare python and rust performance,deep_search
+分析一下这两种方案的优缺点,deep_search
+对比 transformer和rnn 的区别并总结,deep_search
+deep dive into the tradeoffs between them,deep_search
+帮我综合分析下市场趋势,deep_search
+对比分析两个架构的差异,deep_search
+analyze the pros and cons of both,deep_search
+总结对比最近的技术趋势,deep_search
+分析影响性能的几个因素,deep_search
+综合评估两种方案的风险,deep_search
+最近新建的文件有哪些,filename_query
+找一下最近修改过的文件,filename_query
+最新的文件是哪个,filename_query
+哪些文件是今天创建的,filename_query
+查找最近添加的文件,filename_query

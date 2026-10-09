@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import re
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -109,6 +110,16 @@ FILENAME_QUERY_KEYWORDS: Tuple[str, ...] = (
     "最近的文件", "最新文件", "文件名搜索", "搜索文件名",
 )
 
+#: 文件列表检索（指定根路径 + 条件列出/找出文件）的判定词。
+#: 与 FILENAME_QUERY_KEYWORDS 的差别：这组词必须带「路径/目录」语境，
+#: 命中的请求形如「为我找出 C:\\Steam 路径下的 steam 注册表文件」。
+FILELIST_SEARCH_KEYWORDS: Tuple[str, ...] = (
+    "路径下", "目录下", "文件夹下", "该路径", "此目录", "这个目录",
+    "文件列表", "文件清单", "路径下的", "目录下的", "文件夹下的",
+    "列出文件", "找出文件", "list files", "list directory",
+    "file list", "under the path",
+)
+
 #: 只读安全守卫的判定词（用户明确要求不要动文件）
 READONLY_INDICATORS: Tuple[str, ...] = (
     "只读", "readonly", "read-only", "不修改", "不移动", "不删除",
@@ -124,6 +135,42 @@ WRITE_INTENTS = frozenset({
     IntentType.MODIFY_FILE,
     IntentType.REFACTOR,
 })
+
+#: 疑问句式（中文子串匹配）—— 规则路关键词证据**完全缺席**时的句式兜底。
+#: 典型：中英混合选择问句「message window还是token window」没有命中任何
+#: 操作/查询关键词，规则路原样弃权 → 神经路盲猜。只在弃权分支生效，
+#: 不与 ADD/DELETE 等关键词证据竞争（"怎么删除" 仍由「删除」关键词裁决）。
+QUESTION_PATTERNS: Tuple[str, ...] = (
+    "还是", "?", "？", "为什么", "怎么", "如何", "什么", "哪些", "哪个",
+    "哪里", "在哪", "谁", "多少", "能否", "是否", "有没有", "是不是",
+    "想问", "请教",
+)
+
+#: 英文疑问词（按词边界匹配，避免 "is" 命中 "this" 之类子串误判）
+ENGLISH_QUESTION_WORDS: Tuple[str, ...] = (
+    "what", "how", "why", "when", "where", "who", "which", "whether",
+    "should", "would", "could", "can", "does", "did", "is", "are", "do",
+)
+
+
+def looks_like_question(query: str) -> bool:
+    """中英混合疑问句判据 → 调用方兜底为 QUERY。
+
+    必须同时满足「疑问句式」且「含拉丁词」（即用户要的中英混合句）。
+    纯中文疑问句不投票：它们多是寒暄（「你会画画吗？」），检索语料 +
+    神经路已有正确覆盖；规则源 EXP3 权重很高，投一票 query 就会直接
+    压过 vague 触发回归。寒暄信号本身也不进规则路 —— 同理，给 vague
+    投票会把置信度推过 p*，反触发 VAGUE 分支的「高置信 → 降级 query」。
+    """
+    q = (query or "").lower().strip()
+    if not q:
+        return False
+    tokens = set(re.findall(r"[a-z']+", q))
+    is_question = any(p in q for p in QUESTION_PATTERNS) \
+        or bool(tokens & set(ENGLISH_QUESTION_WORDS))
+    if not is_question:
+        return False
+    return bool(re.search(r"[a-z][a-z0-9_']{1,}", q))  # 中英混合限定
 
 # ================================================================
 # 三、语义特征提取器（原来两份逐字副本）
@@ -195,10 +242,11 @@ def semantic_conflict_guard(query: str, proposed: IntentType,
                             votes: Optional[Dict[IntentType, Dict]] = None) -> IntentType:
     """语义冲突护栏：关键词明确指向只读/查询时，禁止落进写操作意图。
 
-    三层判定（顺序即优先级）：
+    四层判定（顺序即优先级）：
       1. 只读/分析/扫描/报告 —— 最具体的意图，优先于泛化查询判定；
-      2. 查询类关键词（且无删除词）—— 降级为 QUERY；
-      3. 文件名类关键词 —— 降级为 FILENAME_QUERY。
+      2. 指定路径列文件 —— 比泛化查询更具体，降级为 FILELIST_SEARCH；
+      3. 查询类关键词（且无删除词）—— 降级为 QUERY；
+      4. 文件名类关键词 —— 降级为 FILENAME_QUERY。
 
     ``votes`` 仅为兼容旧签名保留（历史上曾读取 votes[QUERY].score，
     但 votes 只包含拿到票的意图，QUERY 不一定存在 → KeyError 风险）。
@@ -221,13 +269,18 @@ def semantic_conflict_guard(query: str, proposed: IntentType,
                 return IntentType.REPORT_GENERATE
             return IntentType.QUERY
 
-    # 2) 查询类关键词（明确的删除意图除外）
+    # 2) 指定路径下按条件列文件（比泛化查询更具体：用户给了根路径）
+    if any(kw in q for kw in FILELIST_SEARCH_KEYWORDS):
+        if proposed in WRITE_INTENTS:
+            return IntentType.FILELIST_SEARCH
+
+    # 3) 查询类关键词（明确的删除意图除外）
     if any(kw in q for kw in SEARCH_KEYWORDS) and not any(
             kw in q for kw in DELETE_KEYWORDS):
         if proposed in WRITE_INTENTS:
             return IntentType.QUERY
 
-    # 3) 文件名类查询
+    # 4) 文件名类查询
     if any(kw in q for kw in FILENAME_QUERY_KEYWORDS):
         if proposed in WRITE_INTENTS:
             return IntentType.FILENAME_QUERY
@@ -268,6 +321,7 @@ ROUTING_MAP: Dict[IntentType, RoutingPath] = {
     IntentType.FILE_SCAN: RoutingPath.FILE_SCAN,
     IntentType.REPORT_GENERATE: RoutingPath.REPORT_GENERATE,
     IntentType.FILENAME_QUERY: RoutingPath.FILENAME_QUERY,
+    IntentType.FILELIST_SEARCH: RoutingPath.FILELIST_SEARCH,
 }
 
 QUERY_ROUTING_MAP: Dict[QuerySubIntent, RoutingPath] = {
@@ -477,6 +531,13 @@ TASK_TEMPLATES: Dict[IntentType, List[str]] = {
         "找到本周创建的文件", "最近一天修改的文件",
         "recently modified files", "find newly created files",
         "最新的文件名有哪些", "最近操作过的文件",
+    ],
+    IntentType.FILELIST_SEARCH: [
+        "为我找出 C:\\Steam 路径下的文件", "列出 D:\\data 目录下的所有文件",
+        "帮我找出 E:\\backup 下的 txt 文件", "C:\\logs 目录下有哪些日志文件",
+        "找出 D:\\game 目录下的注册表文件", "把该路径下的文件清单列出来",
+        "列出这个目录下的文件列表", "find files under the given path",
+        "locate registry files under C:\\Steam", "list all files in that directory",
     ],
 }
 
