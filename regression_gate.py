@@ -95,6 +95,16 @@ class GateThresholds:
     # probe() 是固定输入 → 固定输出，所以这些阈值跨机器可复现。
     nsp_max_total: Optional[float] = None      # NSP 总损失上限（越低越好）
     nsp_min_infonce_acc: Optional[float] = None  # InfoNCE top-1 命中率下限
+    # MARL 侧阈值保持 None 的实测依据（2026-10-09，自循环探针已与训练分布对齐）：
+    #   随机初始化 intent=6.36 slot=11.07 subintent=8.87，命中率全为 1/17=0.0588；
+    #   训练到 102 次 PPO 更新（warmup=50 的 2 倍）后 intent=4.41 slot=4.51
+    #   subintent=8.75 —— slot 分离度 2.46x、intent 1.44x、subintent 1.01x，
+    #   且三个专家命中率仍贴地板（intent 2/17）。最差专家 subintent 与随机
+    #   几乎无差别，任何 max_total 都只剩约 10% 的判定窗口，设了等于拟合噪声。
+    # 单体侧（2198 步）随机 12.49/0.0625 vs 已训 3.91/0.8125 = 3.2x 分离，
+    # 故 8.0/0.4 有约 2 倍 margin。MARL 待「最差专家分离度 ≥2x 且命中率
+    # 离开 1/17 地板」后再设，命令：
+    #   python regression_gate.py --agent marl --nsp-max-total <2x 已训值>
 
     def to_dict(self) -> dict:
         return {
