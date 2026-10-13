@@ -1,6 +1,7 @@
 from typing import List, Tuple, Dict, Optional
+import traceback
 from agent_state import AgentState, IntentType, QuerySubIntent, RoutingPath, RetrievalResult, SlotType
-from agent_rl import AgentRL, should_clarify
+from agent_rl import AgentRL, should_clarify, MAX_CLARIFY_DEPTH, WRITE_CONF_GUARD
 from marl_agent import MetaAgent, create_marl_agent
 from file_operators import FileOperationHandler, OperationOutcome
 from fact_query import FactQueryHandler
@@ -9,6 +10,7 @@ from clarification import ClarificationHandler
 from evidence_evaluator import TerminationPolicy
 from file_corpus import FileCorpus
 from system_file_finder import SystemFileFinder
+from filelist_search import FileListSearchHandler
 from ocr_handler import OCRHandler, create_ocr_handler
 from intent_shared import SEARCH_KEYWORDS, DELETE_KEYWORDS
 
@@ -53,6 +55,7 @@ class Router:
         self.deep_search_handler = DeepSearchHandler(self.corpus)
         self.clarification_handler = ClarificationHandler()
         self.system_finder = SystemFileFinder()
+        self.filelist_handler = FileListSearchHandler()
         self.ocr_handler = create_ocr_handler()
         self.termination = TerminationPolicy()
         self.evidence_evaluator = None
@@ -127,6 +130,20 @@ class Router:
                 state.current_intent = IntentType.QUERY
                 state.routing_path = RoutingPath.SINGLE_VECTOR
                 self._route_fact_query(state, query)
+            elif confidence < WRITE_CONF_GUARD:
+                # 护栏：置信度低于下限（如 LLM 缺席时神经路盲猜 0.14），
+                # 意图本身不可信 → 不执行写操作，降级为事实查询保底。
+                print(f"  [护栏] 写意图置信度过低 ({confidence:.4f} < {WRITE_CONF_GUARD})，"
+                      f"降级为事实查询")
+                state.current_intent = IntentType.QUERY
+                state.routing_path = RoutingPath.SINGLE_VECTOR
+                self._route_fact_query(state, query)
+            elif (intent != IntentType.REFACTOR
+                  and not self._slot_file_target(state, query)
+                  and state.clarification_rounds < MAX_CLARIFY_DEPTH):
+                # 缺关键槽位（文件名）：消费 process() 已生成的澄清信号，
+                # 先问再做，不再直接执行后必然失败。
+                self._route_clarification(state, clarifications)
             else:
                 self._route_file_operation(state, intent, query)
         elif intent == IntentType.QUERY:
@@ -169,6 +186,8 @@ class Router:
             self._route_report_generate(state, query)
         elif intent == IntentType.FILENAME_QUERY:
             self._route_filename_query(state, query)
+        elif intent == IntentType.FILELIST_SEARCH:
+            self._route_filelist_search(state, query)
 
         state.clarifications = state.clarifications or []
         if state.clarifications:
@@ -253,7 +272,12 @@ class Router:
         从而路径总量满足 P1 < P2 = P3 > P4 > ... > 答错。
         """
         print(f"\n>>> [闭环] 用户补充: {user_answer}")
-        state.add_dialog(user_answer, "")
+        # 澄清答案与原指令合并后重新路由：写意图缺槽位的澄清问题只要求补
+        # 文件名（如「notes.txt」），拿答案单独分类会跑偏；合并后
+        # 「添加文件」+「notes.txt」= 完整指令，VAGUE 场景用户给全指令也不受影响。
+        original = state.dialog_history[-1].user_query if state.dialog_history else ""
+        merged = f"{original} {user_answer.strip()}".strip()
+        state.add_dialog(merged, "")
         state.clarifications = []
         reward = self.agent_rl.compute_reward("clarification_resolved", state)
         self.agent_rl.learn(reward, state, done=False)
@@ -334,7 +358,17 @@ class Router:
 
     def _route_deep_search(self, state: AgentState, query: str):
         print(f"\n>>> [深度检索] 多轮迭代检索: {query}")
-        self.deep_search_handler.execute(state, self.termination, self)
+        # 深度检索内部异常不允许拖垮整条链路：记录堆栈后降级为单轮事实检索
+        try:
+            self.deep_search_handler.execute(state, self.termination, self)
+        except Exception:
+            traceback.print_exc()
+            print("  [深度检索] 执行异常，已降级为单轮事实检索（本轮不中断）")
+            try:
+                state.add_evidence(self.fact_handler.retrieve(query))
+                state.increment_round()
+            except Exception:
+                traceback.print_exc()
 
         done, reason, reward_key = self.termination.check(state)
         
@@ -388,7 +422,11 @@ class Router:
         print(f"  [RL奖励] {reward:+.1f} ({reward_key})")
         print(f"  [终止判定] {reason}")
         if done:
-            state.terminate()
+            if state.final_answer:
+                # ReAct 已产出答案：只标记终止，不能用空串覆盖掉它
+                state.is_terminated = True
+            else:
+                state.terminate()
     
     def _check_valid_result(self, state: AgentState) -> bool:
         """检查深度检索是否有有效结果。"""
@@ -798,6 +836,45 @@ class Router:
         print(f"  [RL奖励] {reward:+.1f} ({reward_key})")
         print(f"  [终止判定] {reason}")
         
+        state.terminate(result)
+
+    def _route_filelist_search(self, state: AgentState, query: str):
+        """路由到文件列表搜索分支（指定根路径 + 云 LLM ReAct 扫描，只读）。
+
+        缺根路径不直接执行：走澄清闭环，用户补路径后重新进入意图识别。
+        """
+        spec = self.filelist_handler.parse_spec(query, state.slots)
+        if not spec.root:
+            print("\n>>> [文件列表搜索] 未识别到根路径，触发澄清")
+            self._route_clarification(
+                state, self.filelist_handler.clarification_for(query))
+            return
+
+        print(f"\n>>> [文件列表搜索] 只读扫描: {query}")
+        result = self.filelist_handler.execute(state, spec)
+        found = self.filelist_handler.found
+
+        state.add_evidence(RetrievalResult(
+            documents=[{
+                "content": result,
+                "source": "filelist_search",
+                "score": 1.0 if found else 0.0,
+            }],
+            score=1.0 if found else 0.0,
+            query_used=query,
+            round_num=state.current_round,
+        ))
+        state.increment_round()
+
+        reward_key = "query_success" if found else "insufficient_evidence"
+        done = True
+        reason = "文件列表检索完成" if found else "文件列表检索未找到匹配文件"
+
+        reward = self.agent_rl.compute_reward(reward_key, state)
+        self.agent_rl.learn(reward, state, done)
+        print(f"  [RL奖励] {reward:+.1f} ({reward_key})")
+        print(f"  [终止判定] {reason}")
+
         state.terminate(result)
 
     def _extract_time_range(self, query: str) -> str:

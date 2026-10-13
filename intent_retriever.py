@@ -1,7 +1,8 @@
 """检索式意图识别：从标注意图语料库召回相似例句，作为端到端分类的第四路投票信号。
 
 设计:
-  - 语料: datasets/intent_corpus.csv + 项目根 intent_corpus.csv（自动去重合并）
+  - 语料: datasets/intent_corpus.csv + 项目根 intent_corpus.csv +
+         datasets/intent_corpus_bulk.csv（30 万条批量生成语料，自动去重合并）
   - 向量: embedding.create_embedder() 优先 sentence-transformers (bge-small-zh)，
          不可用时回退 TF-IDF（与文档检索共用同一 Embedder 工厂）
   - 索引: FAISS IndexFlatIP（可用时）/ numpy 暴力余弦回退
@@ -77,6 +78,7 @@ class IntentRetriever:
             csv_paths = [
                 os.path.join(base, "intent_corpus.csv"),
                 os.path.join(base, "datasets", "intent_corpus.csv"),
+                os.path.join(base, "datasets", "intent_corpus_bulk.csv"),
             ]
         self.csv_paths = [p for p in csv_paths if os.path.exists(p)]
 
@@ -371,6 +373,24 @@ class IntentRetriever:
         max_sim = hits[0]["similarity"]
         if max_sim < self.min_similarity:
             return None, 0.0, None
+
+        # 近逐字命中：语料行标签即权威。
+        # 否则按 top-k 求和聚合时，同一模板的近重复聚类（如 3×0.60）
+        # 会以「条数和」压过逐字匹配（1×1.0），把精确命中投成别的标签。
+        top = hits[0]
+        if top["similarity"] >= 0.98:
+            try:
+                intent = IntentType(top["label"])
+            except ValueError:
+                intent = None
+            if intent is not None:
+                confidence = float(max(0.0, min(1.0, top["similarity"])))
+                self.last_hit = top
+                self.last_evidence = (
+                    f"[{top['label']}] {top['text']} "
+                    f"(sim={top['similarity']:.3f})"
+                )
+                return intent, confidence, self.last_evidence
 
         # 按标签累加相似度（相似度加权投票）
         score_by_label: Dict[str, float] = {}

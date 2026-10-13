@@ -1,12 +1,14 @@
 """Rerank 重排模块：向量召回之后对候选文档做精排精选。
 
 三级后端（自动降级，任一不可用则回退下一级）：
-  1. cross_encoder —— sentence-transformers CrossEncoder（真正的重排模型）
-  2. embedding     —— 复用项目 Embedder 的语义相似度打分
-  3. lexical       —— 分词重合度词法打分（零依赖回退）
+  1. embedding     —— 复用项目 Embedder 的语义相似度打分（默认）
+  2. lexical       —— 分词重合度词法打分（零依赖回退）
+  3. cross_encoder —— sentence-transformers CrossEncoder（需联网拉模型，显式开启）
 
 环境变量：
-  - RERANK_BACKEND: auto | cross_encoder | embedding | lexical（默认 auto）
+  - RERANK_BACKEND: auto | cross_encoder | embedding | lexical（默认 embedding）
+                    auto/cross_encoder 会尝试 CrossEncoder，离线环境会卡在模型下载重试上，
+                    仅在能访问 HuggingFace 或模型已缓存时使用。
   - RERANK_MODEL:   CrossEncoder 模型名（默认 cross-encoder/ms-marco-MiniLM-L-6-v2）
   - RERANK_TOP_CANDIDATES: 召回候选数倍数提示（默认 3）
 
@@ -107,9 +109,13 @@ class EmbeddingReranker(BaseReranker):
 
     def __init__(self):
         from embedding import SentenceTransformerEmbedder, create_embedder
-        emb = create_embedder(backend="sentence_transformers")
+        # 用 auto 而不是强制 sentence_transformers：create_embedder 会先做 3s 的
+        # HuggingFace 可达性探测，不可达时直接返回 TF-IDF —— 由此立刻抛错降级，
+        # 不会在离线环境里卡在 CrossEncoder/SentenceTransformer 的下载重试上。
+        emb = create_embedder(backend="auto")
         if not isinstance(emb, SentenceTransformerEmbedder):
-            raise ImportError("sentence-transformers Embedder 不可用")
+            raise ImportError("sentence-transformers Embedder 不可用"
+                              "（HuggingFace 不可达或模型未缓存）")
         self.embedder = emb
 
     def _score(self, query: str, documents: List[Dict]) -> List[float]:
@@ -149,15 +155,19 @@ _RERANKER: Optional[BaseReranker] = None
 
 
 def _build_reranker() -> BaseReranker:
-    """按 env 配置尝试构建重排器，失败自动降级。"""
-    backend = (os.environ.get("RERANK_BACKEND") or "auto").lower()
+    """按 env 配置尝试构建重排器，失败自动降级。
+
+    默认 embedding（→ lexical）：不依赖外网，离线也不会卡在模型下载重试。
+    cross_encoder / auto 需要显式设置 RERANK_BACKEND 才启用。
+    """
+    backend = (os.environ.get("RERANK_BACKEND") or "embedding").lower()
     orders = {
         "auto": ["cross_encoder", "embedding", "lexical"],
         "cross_encoder": ["cross_encoder", "embedding", "lexical"],
         "embedding": ["embedding", "lexical"],
         "lexical": ["lexical"],
     }
-    order = orders.get(backend, orders["auto"])
+    order = orders.get(backend, orders["embedding"])
     factories = {
         "cross_encoder": lambda: CrossEncoderReranker(),
         "embedding": lambda: EmbeddingReranker(),

@@ -74,7 +74,9 @@ from transformer_arch import (
 )
 from nsp_latent import NSPLatentModule, apply_nsp_ablation, build_nsp
 
-MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+from runtime_paths import models_dir as _models_dir
+
+MODEL_DIR = str(_models_dir())
 DEFAULT_MODEL_PATH = os.path.join(MODEL_DIR, "agent_rl.pth")
 MODEL_VERSION_DIR = os.path.join(MODEL_DIR, "versions")
 

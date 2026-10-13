@@ -11,7 +11,11 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-from runtime_paths import DB_DIR
+from runtime_paths import DB_DIR, RUNTIME_ROOT
+
+# NSP 指标的滚动历史：探针本身是即时快照，趋势要靠这份追加写
+NSP_HISTORY_PATH = RUNTIME_ROOT / "nsp_history.jsonl"
+NSP_HISTORY_LIMIT = 500
 
 
 class MetricsTools:
@@ -201,6 +205,33 @@ class MetricsTools:
                 }
             },
             {
+                "name": "get_nsp_metrics",
+                "description": "获取 NSP 潜空间量化指标：确定性探针"
+                               "（NLL/KL/InfoNCE/H 步 rollout 误差/EMA 漂移）"
+                               "+ 训练期滚动均值 + 历史趋势",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "agent": {
+                            "type": "string",
+                            "enum": ["single", "marl", "both"],
+                            "description": "被测架构：single=AgentRL，marl=三专家",
+                            "default": "both"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "返回最近 N 条历史",
+                            "default": 50
+                        },
+                        "no_history": {
+                            "type": "boolean",
+                            "description": "只读不写，不追加历史记录",
+                            "default": False
+                        }
+                    }
+                }
+            },
+            {
                 "name": "benchmark_routing",
                 "description": "执行路由性能基准测试",
                 "inputSchema": {
@@ -229,6 +260,7 @@ class MetricsTools:
             "get_reward_statistics": self._get_reward_statistics,
             "get_latency_distribution": self._get_latency_distribution,
             "get_training_progress": self._get_training_progress,
+            "get_nsp_metrics": self._get_nsp_metrics,
             "compare_model_versions": self._compare_model_versions,
             "export_metrics_report": self._export_metrics_report,
             "benchmark_routing": self._benchmark_routing,
@@ -472,6 +504,93 @@ class MetricsTools:
         except Exception as e:
             return {"error": str(e)}
     
+    # ---------------------------------------------------------- NSP 潜空间
+    def _nsp_history(self, limit: int) -> List[Dict]:
+        if not NSP_HISTORY_PATH.exists():
+            return []
+        rows: List[Dict] = []
+        try:
+            with open(NSP_HISTORY_PATH, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rows.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            return []
+        return rows[-max(int(limit), 1):]
+
+    def _append_nsp_history(self, records: List[Dict]) -> None:
+        """追加一条探针快照；超上限时整体截断成最近 NSP_HISTORY_LIMIT 条。"""
+        if not records:
+            return
+        try:
+            os.makedirs(os.path.dirname(str(NSP_HISTORY_PATH)) or ".", exist_ok=True)
+            with open(NSP_HISTORY_PATH, "a", encoding="utf-8") as fh:
+                for rec in records:
+                    fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            total = len(self._nsp_history(NSP_HISTORY_LIMIT + len(records) + 1))
+            if total > NSP_HISTORY_LIMIT:
+                keep = self._nsp_history(NSP_HISTORY_LIMIT)
+                tmp = str(NSP_HISTORY_PATH) + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as fh:
+                    for rec in keep:
+                        fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                os.replace(tmp, NSP_HISTORY_PATH)
+        except OSError:
+            pass
+
+    def _get_nsp_metrics(self, params: Dict) -> Dict:
+        """NSP 潜空间量化指标。
+
+        ``probe`` 是固定输入 → 固定输出的确定性快照（可跨机器复现、可写进
+        基线）；``training`` 是训练期的滚动均值，只用于观测趋势。
+        """
+        target = str(params.get("agent", "both"))
+        limit = int(params.get("limit", 50))
+        no_history = bool(params.get("no_history", False))
+        sys.path.insert(0, os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__)))))
+
+        probe: Dict[str, Any] = {}
+        training: Dict[str, Any] = {}
+        errors: Dict[str, str] = {}
+
+        if target in ("single", "both"):
+            try:
+                from agent_rl import AgentRL
+                agent = AgentRL(marl_vote=False)
+                probe["single"] = agent.nsp_probe()
+                training["single"] = agent.nsp_metrics_snapshot()
+            except Exception as e:
+                errors["single"] = str(e)
+        if target in ("marl", "both"):
+            try:
+                from marl_agent import create_marl_agent
+                meta = create_marl_agent()
+                probe["marl"] = meta.nsp_probe()
+                training["marl"] = meta.nsp_metrics_snapshot()
+            except Exception as e:
+                errors["marl"] = str(e)
+
+        if not no_history:
+            now = datetime.utcnow().isoformat(timespec="seconds")
+            self._append_nsp_history(
+                [{"ts": now, "arch": arch, "probe": data}
+                 for arch, data in probe.items()])
+
+        result: Dict[str, Any] = {
+            "probe": probe,
+            "training": training,
+            "history": self._nsp_history(limit),
+        }
+        if errors:
+            result["errors"] = errors
+        return result
+
     def _compare_model_versions(self, params: Dict) -> Dict:
         """比较模型版本"""
         version_a = params.get("version_a")

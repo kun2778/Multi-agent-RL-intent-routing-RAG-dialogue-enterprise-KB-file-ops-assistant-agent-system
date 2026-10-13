@@ -25,18 +25,25 @@ from agent_state import IntentType, AgentState
 from intent_retriever import IntentRetriever
 
 
-def make_retriever(persist=False, tmp=None):
+# 只读测试共享同一个持久化目录：30 万语料全量重建一次要数十秒，
+# 不共享的话每个用例都重建一遍，整个套件会被索引构建拖垮。
+# 语料/配置变化时指纹自动失效 → 照常重建，不影响正确性。
+_SHARED_TMP = os.path.join(tempfile.gettempdir(), "agentrl_intent_test_idx")
+
+
+def make_retriever(persist=True, tmp=None):
     base = os.path.dirname(os.path.abspath(__file__))
     csvs = [
         os.path.join(base, "intent_corpus.csv"),
         os.path.join(base, "datasets", "intent_corpus.csv"),
+        os.path.join(base, "datasets", "intent_corpus_bulk.csv"),
     ]
     csvs = [p for p in csvs if os.path.exists(p)]
     assert csvs, "未找到 intent_corpus.csv"
     return IntentRetriever(
         csv_paths=csvs,
         persist=persist,
-        persist_dir=tmp or tempfile.mkdtemp(prefix="intent_idx_"),
+        persist_dir=tmp or _SHARED_TMP,
         top_k=5,
         min_similarity=0.30,
     )
@@ -83,7 +90,7 @@ def test_vote_known_intents():
 
 
 def test_vote_ood_abstain():
-    r = make_retriever(persist=False)
+    r = make_retriever()
     # 极端 OOD：与任何标注例句都不像（乱码/无关长句），应大概率弃权或低置信
     ood = "quantum blockchain zyzzyx frobnicate 12345 !@#$%"
     intent, conf, ev = r.vote(ood)

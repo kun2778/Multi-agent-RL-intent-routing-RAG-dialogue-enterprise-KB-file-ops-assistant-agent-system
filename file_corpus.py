@@ -29,7 +29,41 @@ from registry_db import RegistryDB, compute_file_hash
 from parallel_scanner import ParallelScanner, ScanStats, READABLE_EXTENSIONS
 from embedding import create_embedder
 from runtime_paths import DB_DIR, FAISS_DIR, WORKSPACE_DIR
-from atomic_io import atomic_write_text, decode_bytes, open_read
+from atomic_io import atomic_write_text, decode_bytes, open_read, sweep_orphan_tmp
+
+
+def _is_inside(root_real: str, candidate_real: str) -> bool:
+    """candidate_real 是否落在 root_real 之内（含 root_real 本身）。"""
+    root_c = os.path.normcase(root_real)
+    cand_c = os.path.normcase(candidate_real)
+    if cand_c == root_c:
+        return True
+    return cand_c.startswith(root_c.rstrip("\\/") + os.sep)
+
+
+def _unique_path(directory: str, stem: str, ext: str = "") -> str:
+    """在 directory 下生成不与既有文件冲突的 ``{stem}.{stamp}[.{n}]{ext}``。
+
+    只用 ``int(time.time())`` 做后缀时，同一秒内的两次操作会互相覆盖，
+    造成静默数据丢失（回收站/备份都踩过这个坑）。
+    """
+    stamp = int(time.time())
+    cand = os.path.join(directory, f"{stem}.{stamp}{ext}")
+    n = 0
+    while os.path.exists(cand):
+        n += 1
+        cand = os.path.join(directory, f"{stem}.{stamp}.{n}{ext}")
+    return cand
+
+
+# 写/删作用域的系统目录黑名单（normcase 小写，realpath 后做前缀匹配）
+PROTECTED_DIRS = tuple(
+    os.path.normcase(p) for p in (
+        r"C:\Windows",
+        r"C:\Program Files",
+        r"C:\Program Files (x86)",
+    )
+)
 
 
 # 可被整理分类的文件夹
@@ -171,6 +205,8 @@ class FileCorpus:
                 self.use_faiss_store = False
 
         self._ensure_dirs()
+        # 清理上次运行被 kill 遗留的原子写孤儿临时文件
+        self._orphan_tmp_swept = sweep_orphan_tmp(self.root)
         self._sync_filesystem()
         self._rebuild_index()
 
@@ -231,23 +267,27 @@ class FileCorpus:
         return doc
 
     def add_document(self, name: str, content: str, tags: List[str] = None) -> Tuple[bool, str, Dict]:
-        """添加文件到语料库。"""
+        """添加文件到语料库（支持 workspace 相对路径与 C 盘绝对路径）。"""
+        name = (name or "").strip()
         if not name:
             return False, "未指定文件名", {}
-        name = name.strip()
-        if name != os.path.basename(name):
-            rel_dir = os.path.dirname(name)
-            os.makedirs(os.path.join(self.root, rel_dir), exist_ok=True)
-            rel_path = name
-        else:
-            rel_path = name
 
-        abs_path = os.path.join(self.root, rel_path)
-        if os.path.exists(abs_path) and self._resolve_target(rel_path):
+        rel_path = self._registry_key(name)
+        abs_path = self._full_path(rel_path)
+
+        # 作用域：workspace 内放行；工作区外仅限 C 盘且避开系统目录
+        scope_err = self._scope_error(abs_path)
+        if scope_err:
+            return False, scope_err, {}
+
+        if os.path.exists(abs_path):
             return False, f"文件 {rel_path} 已存在，请改用修改操作", {}
 
-        os.makedirs(os.path.dirname(abs_path) or self.root, exist_ok=True)
-        atomic_write_text(abs_path, content)
+        try:
+            os.makedirs(os.path.dirname(abs_path) or self.root, exist_ok=True)
+            atomic_write_text(abs_path, content)
+        except OSError as e:
+            return False, f"写入失败: {e}", {}
 
         # 更新注册表
         ext = os.path.splitext(rel_path)[1].lstrip('.').lower()
@@ -274,16 +314,18 @@ class FileCorpus:
         return True, f"已添加文件 {rel_path}", doc
 
     def delete_document(self, target: str) -> Tuple[bool, str, Dict]:
-        """删除文件（移入 .trash 回收站）。"""
-        rel_path = self._resolve_target(target)
+        """删除文件（移入 .trash 回收站；支持 C 盘绝对路径，系统目录拒绝）。"""
+        rel_path = self._resolve_target(target, for_write=True)
         if not rel_path:
             return False, f"未找到文件: {target}", {}
-        abs_path = os.path.join(self.root, rel_path)
+        abs_path = self._full_path(rel_path)
+        scope_err = self._scope_error(abs_path)
+        if scope_err:
+            return False, scope_err, {}
         doc = self.registry.get_file(rel_path) or {}
 
         try:
-            stamp = str(int(time.time()))
-            trash_path = os.path.join(self.trash_dir, f"{os.path.basename(rel_path)}.{stamp}")
+            trash_path = _unique_path(self.trash_dir, os.path.basename(rel_path))
             shutil.move(abs_path, trash_path)
         except OSError as e:
             return False, f"删除失败: {e}", {}
@@ -300,16 +342,19 @@ class FileCorpus:
 
     def modify_document(self, target: str, new_content: str = None, new_name: str = None,
                         tags: List[str] = None) -> Tuple[bool, str, Dict]:
-        """修改文件内容/标签/文件名（修改前自动备份）。"""
-        rel_path = self._resolve_target(target)
+        """修改文件内容/标签/文件名（修改前自动备份；支持 C 盘绝对路径，系统目录拒绝）。"""
+        rel_path = self._resolve_target(target, for_write=True)
         if not rel_path:
             return False, f"未找到文件: {target}", {}
-        abs_path = os.path.join(self.root, rel_path)
+        abs_path = self._full_path(rel_path)
+        scope_err = self._scope_error(abs_path)
+        if scope_err:
+            return False, scope_err, {}
         doc = self.registry.get_file(rel_path) or {}
         changed = []
 
         if new_content is not None:
-            bak_path = os.path.join(self.backup_dir, f"{os.path.basename(rel_path)}.{int(time.time())}.bak")
+            bak_path = _unique_path(self.backup_dir, os.path.basename(rel_path), ".bak")
             try:
                 shutil.copy2(abs_path, bak_path)
                 atomic_write_text(abs_path, new_content)
@@ -318,16 +363,26 @@ class FileCorpus:
                 return False, f"写入失败: {e}", {}
 
         if new_name is not None and new_name != rel_path:
-            new_abs = os.path.join(self.root, new_name)
-            try:
-                os.rename(abs_path, new_abs)
-                self.registry.delete_file(rel_path)
-                rel_path = new_name
-                abs_path = new_abs
-                changed.append("文件名")
-            except OSError as e:
-                if "内容" not in changed:
-                    return False, f"重命名失败: {e}", {}
+            new_name = new_name.strip()
+            if not new_name:
+                return False, "非法文件名：文件名不能为空", {}
+            new_key = self._registry_key(new_name)
+            new_abs = self._full_path(new_key)
+            new_scope_err = self._scope_error(new_abs)
+            if new_scope_err:
+                return False, new_scope_err, {}
+            if new_key == rel_path:
+                new_abs = abs_path
+            else:
+                try:
+                    os.rename(abs_path, new_abs)
+                    self.registry.delete_file(rel_path)
+                    rel_path = new_key
+                    abs_path = new_abs
+                    changed.append("文件名")
+                except OSError as e:
+                    if "内容" not in changed:
+                        return False, f"重命名失败: {e}", {}
 
         # 更新注册表
         ext = os.path.splitext(rel_path)[1].lstrip('.').lower()
@@ -364,8 +419,12 @@ class FileCorpus:
         return True, f"已修改 {rel_path}（{', '.join(changed)}）", doc
 
     def refactor(self, mode: str = "by_type", targets: List[str] = None) -> Tuple[bool, str, List[Dict]]:
-        """整理语料库：按类型归类到 code/config/docs/data/other 子文件夹。"""
+        """整理语料库：按类型归类到 code/config/docs/data/other 子文件夹。
+
+        工作区外的绝对路径（C 盘任意位置）不参与整理，避免被挪进 workspace。
+        """
         moved = []
+        skipped_external = 0
         all_files = self.registry.get_all_paths()
         to_move = []
         if targets:
@@ -377,6 +436,9 @@ class FileCorpus:
             to_move = list(all_files)
 
         for rel_path in to_move:
+            if os.path.isabs(rel_path):
+                skipped_external += 1
+                continue
             if "/" in rel_path and rel_path.split("/")[0] in FOLDER_CATEGORIES:
                 continue
             ext = os.path.splitext(rel_path)[1].lower()
@@ -414,11 +476,14 @@ class FileCorpus:
             moved.append({"from": rel_path, "to": new_rel, "category": folder})
 
         if not moved:
+            if skipped_external:
+                return False, f"没有需要移动的文件（{skipped_external} 个工作区外文件不参与整理）", []
             return False, "没有需要移动的文件（已处于正确分类位置）", []
 
         self._rebuild_index(silent=True)
         summary = "\n".join(f"  {m['from']} -> {m['to']} ({m['category']})" for m in moved)
-        return True, f"已整理 {len(moved)} 个文件:\n{summary}", moved
+        note = f"\n（已跳过 {skipped_external} 个工作区外文件）" if skipped_external else ""
+        return True, f"已整理 {len(moved)} 个文件:{note}\n{summary}", moved
 
     # ------------------------------------------------------------------ 检索
     def _rebuild_index(self, silent: bool = False):
@@ -588,18 +653,24 @@ class FileCorpus:
         return scored[:top_k]
 
     # ------------------------------------------------------------------ 工具
-    def _resolve_target(self, target: str) -> Optional[str]:
+    def _resolve_target(self, target: str, for_write: bool = False) -> Optional[str]:
         """把用户输入的目标解析为注册表路径（支持精确/模糊匹配）。
 
-        额外支持：工作区外的绝对路径 — 若磁盘上真实存在且扩展名可读，
-        返回该绝对路径（read_text/get_file_metadata 通过 _full_path 识别）。
+        额外支持：绝对路径 — 若磁盘上真实存在：
+          - 落在 workspace 内 → 归一化为注册表相对键（删除/修改/读取键一致）
+          - 工作区外：for_write=True（删除/修改）直接返回该绝对路径
+            （作用域由 _scope_error 另行校验）；只读路径仅放行可读扩展名。
         """
         if not target:
             return None
 
-        # 工作区外绝对路径（只读放行）
         raw = target.strip().replace("/", "\\")
         if os.path.isabs(raw) and os.path.isfile(raw):
+            real = os.path.realpath(raw)
+            if _is_inside(os.path.realpath(self.root), real):
+                return os.path.relpath(real, os.path.realpath(self.root))
+            if for_write:
+                return raw
             ext = os.path.splitext(raw)[1].lstrip(".").lower()
             if ext == "pdf" or ext in READABLE_EXTENSIONS:
                 return raw
@@ -641,6 +712,47 @@ class FileCorpus:
         if os.path.isabs(rel):
             return rel
         return os.path.join(self.root, rel)
+
+    def _scope_error(self, abs_path: str) -> Optional[str]:
+        """写/删作用域校验：返回错误信息表示拒绝，None 表示放行。
+
+        规则（系统目录黑名单优先）：
+          1. C:\\Windows / C:\\Program Files / C:\\Program Files (x86) 一律拒绝
+          2. workspace 内放行（保持相对路径原有行为）
+          3. 工作区外仅允许 C 盘（realpath+normcase 处理大小写与符号链接）
+        """
+        real = os.path.normcase(os.path.realpath(abs_path))
+        for d in PROTECTED_DIRS:
+            if real == d or real.startswith(d + os.sep):
+                return f"系统目录受保护，禁止写入/删除: {abs_path}"
+        if _is_inside(os.path.realpath(self.root), real):
+            return None
+        if os.path.splitdrive(real)[0] != "c:":
+            return f"作用域限制：仅允许 workspace 与整个 C 盘，拒绝: {abs_path}"
+        return None
+
+    def _registry_key(self, path: str) -> str:
+        """用户输入路径 → 注册表键：workspace 内相对化，工作区外保留绝对路径。
+
+        相对输入且未逃出 workspace 时原样保留（与扫描器键格式一致）。
+        """
+        raw = path.replace("/", "\\")
+        real = os.path.realpath(raw if os.path.isabs(raw) else os.path.join(self.root, raw))
+        root_real = os.path.realpath(self.root)
+        if _is_inside(root_real, real):
+            if os.path.isabs(raw):
+                return os.path.relpath(real, root_real)
+            return path
+        return real
+
+    def check_write_scope(self, target: str) -> Optional[str]:
+        """写/删前置作用域校验（供操作层在生成确认记录前调用）。
+
+        返回错误信息表示拒绝；None 表示放行。无法解析的目标按输入原样
+        判定作用域（黑名单/盘符），具体存在性交给后续流程报“未找到文件”。
+        """
+        matched = self._resolve_target(target, for_write=True) or target
+        return self._scope_error(self._full_path(matched))
 
     def read_text(self, target: str) -> Optional[str]:
         """读取文件文本内容（支持 workspace 注册表 + 工作区外绝对路径）。"""

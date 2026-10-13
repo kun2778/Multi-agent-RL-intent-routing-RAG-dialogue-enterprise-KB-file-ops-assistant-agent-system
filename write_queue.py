@@ -52,13 +52,19 @@ class WriteQueue:
 
     # ------------------------------------------------------------ 提交
     def submit(self, fn: Callable[[], Any]) -> None:
-        """提交一个无参可调用对象，由写线程执行。"""
+        """提交一个无参可调用对象，由写线程执行。
+
+        入队必须与 ``close()`` 的置位/哨兵在同一把锁内完成：若在锁外 ``put``，
+        提交方可能已经通过 ``_closed`` 检查、尚未入队时 ``close()`` 放入哨兵，
+        消费线程退出后该任务永久丢失，``_outstanding`` 也永不归零，
+        ``flush()`` 会一直超时。队列无界，锁内 ``put`` 不会阻塞。
+        """
         with self._drained:
             if self._closed:
                 raise RuntimeError(f"{self._name} is closed")
             self._outstanding += 1
             self._ensure_thread_locked()
-        self._queue.put(fn)
+            self._queue.put(fn)
 
     def submit_json(self, path: Union[str, os.PathLike], obj: Any, **kwargs: Any) -> None:
         """异步原子写 JSON。"""
@@ -86,8 +92,11 @@ class WriteQueue:
                 return
             self._closed = True
             thread = self._thread
+            # 哨兵在锁内入队，保证它一定排在此前所有已受理任务之后
+            # （submit 的入队同样在锁内，故不会插入到哨兵之后）
+            if thread is not None and thread.is_alive():
+                self._queue.put(_SENTINEL)
         if thread is not None and thread.is_alive():
-            self._queue.put(_SENTINEL)
             thread.join(timeout)
         self.flush(timeout)
 

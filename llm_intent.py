@@ -17,6 +17,7 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
+from typing import List, Optional
 
 from providers.config_loader import get_config_loader
 
@@ -24,7 +25,7 @@ VALID_INTENTS = [
     "add_file", "delete_file", "modify_file",
     "refactor", "query", "deep_search", "vague",
     "file_analysis", "file_scan", "report_generate",
-    "filename_query",
+    "filename_query", "filelist_search",
 ]
 
 VALID_QUERY_SUBINTENTS = [
@@ -45,6 +46,7 @@ INTENT_GUIDE = [
     ("file_scan", "文件扫描：只读扫描目录，列出文件、统计信息、检测特殊标记"),
     ("report_generate", "生成报告：基于分析结果生成Markdown/JSON/CSV格式的审查报告"),
     ("filename_query", "按名称搜索文件：查找最近添加/修改/创建的文件名，如「为我找到最近添加的文件名」「最近修改的文件有哪些」"),
+    ("filelist_search", "文件列表搜索：给出一个路径/目录，按条件列出或找出该路径下的文件，如「为我找出C:\\Steam路径下的steam注册表文件」「列出 D:\\data 目录下的所有文件」"),
 ]
 
 QUERY_SUBINTENT_GUIDE = [
@@ -63,7 +65,7 @@ QUERY_SUBINTENT_GUIDE = [
 
 SYSTEM_PROMPT = (
     "你是 AgentRL 系统的意图路由调度器。请把用户的中文指令分类。\n\n"
-    "【一级意图】（11类）：\n"
+    "【一级意图】（12类）：\n"
     + "\n".join(f"  - {v}：{desc}" for v, desc in INTENT_GUIDE) + "\n\n"
     "【QUERY 子意图】（当一级意图为 query 时，需进一步分类）：\n"
     + "\n".join(f"  - {v}：{desc}" for v, desc in QUERY_SUBINTENT_GUIDE) + "\n\n"
@@ -78,7 +80,9 @@ SYSTEM_PROMPT = (
     "  8. 最近截屏：「最近的截屏」「刚才的截图」需先定位文件再OCR。\n"
     "  9. 新增：只读分析/扫描/报告生成属于独立意图，不要误判为query或deep_search。\n"
     "  10. 新增：包含「只读」「不修改」「禁止」等关键词时，必须使用只读路径。\n"
-    "  11. 新增：按名称搜索文件（最近添加/修改/创建）属于 filename_query 意图。\n\n"
+    "  11. 新增：按名称搜索文件（最近添加/修改/创建）属于 filename_query 意图。\n"
+    "  12. 新增：指定了路径/目录并要求列出或找出该路径下的文件，属于 filelist_search 意图，"
+    "与 filename_query（按最近时间找文件名）不同。\n\n"
     "只输出一个 JSON 对象，不要任何解释或 Markdown：\n"
     '  {"intent": "<一级意图>", "query_sub_intent": "<子意图，仅query时填写>", '
     '"target": "<涉及的目标文件/实体>", "slots": {"file_path": "", "image_path": "", "language": ""}, '
@@ -100,9 +104,13 @@ def _extract_json(text: str):
 
 
 class LLMIntentClassifier:
-    """LLM 意图分类器，支持主端点 -> 本地备端点的容灾链。classify() 全失败返回 None。"""
+    """LLM 意图分类器，支持主端点 -> 本地备端点的容灾链。classify() 全失败返回 None。
 
-    def __init__(self):
+    同时作为项目内共用的「端点链」：chat() 暴露与意图无关的通用对话能力，
+    供 deep_search 的 ReAct 循环复用同一套 primary -> fallback 容灾配置。
+    """
+
+    def __init__(self, quiet: bool = False):
         self.provider = ""        # 当前生效端点（主或备）的字段，兼容旧调用方
         self.model = ""
         self.base_url = ""
@@ -111,6 +119,8 @@ class LLMIntentClassifier:
         self.status = "unconfigured"   # ready / fallback / unconfigured
         self.endpoints: list = []
         self._warned = False
+        self._chat_warned = False
+        self._quiet = quiet
         self._config_reason = ""
         self._load_config()
 
@@ -118,7 +128,14 @@ class LLMIntentClassifier:
     def available(self) -> bool:
         return self.status in ("ready", "fallback")
 
+    @property
+    def status_reason(self) -> str:
+        """端点链未就绪的原因（供调用方日志展示）。"""
+        return self._config_reason
+
     def _log_status(self, extra: str = ""):
+        if self._quiet:
+            return
         if self.status == "ready":
             print(f"  [LLM意图] 已启用 provider={self.provider} model={self.model}")
         elif self.status == "fallback":
@@ -253,7 +270,33 @@ class LLMIntentClassifier:
 
         if not self._warned:
             self._warned = True
-            print(f"  [LLM意图] 所有端点调用/解析失败({last_err})，回退到规则/Q网络分类。")
+            if not self._quiet:
+                print(f"  [LLM意图] 所有端点调用/解析失败({last_err})，回退到规则/Q网络分类。")
+        return None
+
+    def chat(self, messages: List[dict], max_tokens: int = 600,
+             temperature: float = 0.2, json_mode: bool = False) -> Optional[str]:
+        """通用对话：按端点链（主 -> fallback）依次调用，全部失败返回 None。
+
+        与 classify() 共用同一套容灾配置，供 deep_search 的 ReAct 循环等调用方复用。
+        """
+        if not self.available:
+            return None
+
+        last_err = None
+        for ep in self.endpoints:
+            if not ep.get("ready"):
+                continue
+            try:
+                return self._transport(messages, ep, max_tokens=max_tokens,
+                                        temperature=temperature, json_mode=json_mode)
+            except Exception as e:
+                last_err = e
+                continue
+
+        if not self._chat_warned:
+            self._chat_warned = True
+            print(f"  [LLM] 所有端点调用失败({last_err})，本次降级为规则决策。")
         return None
 
     # ------------------------------------------------------------------ HTTP
@@ -262,20 +305,25 @@ class LLMIntentClassifier:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"用户输入：{query}"},
         ]
-        if ep["provider"] == "anthropic":
-            return self._call_anthropic(messages, ep)
-        if ep["provider"] == "gemini":
-            return self._call_gemini(messages, ep)
-        return self._call_openai_compatible(messages, ep)
+        return self._transport(messages, ep)
 
-    def _call_openai_compatible(self, messages, ep) -> str:
+    def _transport(self, messages, ep, max_tokens: int = 200,
+                   temperature: float = 0.0, json_mode: bool = True) -> str:
+        if ep["provider"] == "anthropic":
+            return self._call_anthropic(messages, ep, max_tokens, temperature)
+        if ep["provider"] == "gemini":
+            return self._call_gemini(messages, ep, max_tokens, temperature)
+        return self._call_openai_compatible(messages, ep, max_tokens, temperature, json_mode)
+
+    def _call_openai_compatible(self, messages, ep, max_tokens: int = 200,
+                                temperature: float = 0.0, json_mode: bool = True) -> str:
         payload = {
             "model": ep["model"],
             "messages": messages,
-            "temperature": 0.0,
-            "max_tokens": 200,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
         }
-        if not ep.get("is_local"):
+        if json_mode and not ep.get("is_local"):
             payload["response_format"] = {"type": "json_object"}
         body = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
@@ -289,12 +337,14 @@ class LLMIntentClassifier:
             data = json.loads(resp.read().decode("utf-8"))
         return data["choices"][0]["message"]["content"]
 
-    def _call_anthropic(self, messages, ep) -> str:
+    def _call_anthropic(self, messages, ep, max_tokens: int = 200,
+                        temperature: float = 0.0) -> str:
         system = next((m["content"] for m in messages if m["role"] == "system"), "")
         user_text = "".join(m["content"] for m in messages if m["role"] == "user")
         payload = {
             "model": ep["model"],
-            "max_tokens": 200,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
             "system": system,
             "messages": [{"role": "user", "content": user_text}],
         }
@@ -311,7 +361,8 @@ class LLMIntentClassifier:
             data = json.loads(resp.read().decode("utf-8"))
         return "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
 
-    def _call_gemini(self, messages, ep) -> str:
+    def _call_gemini(self, messages, ep, max_tokens: int = 200,
+                     temperature: float = 0.0) -> str:
         system = next((m["content"] for m in messages if m["role"] == "system"), "")
         payload = {
             "system_instruction": {"parts": [{"text": system}]},
@@ -319,7 +370,7 @@ class LLMIntentClassifier:
                 {"role": "user", "parts": [{"text": m["content"]}]}
                 for m in messages if m["role"] == "user"
             ],
-            "generationConfig": {"temperature": 0.0, "maxOutputTokens": 200},
+            "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},
         }
         body = json.dumps(payload).encode("utf-8")
         url = (f"{ep['base_url']}/v1beta/models/{ep['model']}:generateContent?"

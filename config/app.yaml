@@ -52,6 +52,8 @@ intent_llm:
     clarification_resolved: 7.0
     timeout: -3.0
     evidence_sufficient: 8.0
+    # 输入不完整（缺文件名/缺内容）≠ 执行失败，中性 0（见 agent_rl.REWARD_MAP）
+    missing_slot: 0.0
     # 轮次衰减（运行时真源：agent_rl.py 顶部 CLARIFY_* / R_WRONG 常量）：
     #   带 state 调用时，答对键按 a_k = a_{k-1} - q_k - eps_k 折算，
     #   clarification_resolved 按 q_k = 1.5 * 0.8^(k-1) 折算（k = 已澄清轮数+1），
@@ -88,7 +90,7 @@ intent_retrieval:
   enabled: true
   top_k: 5               # 召回相似例句数
   min_similarity: 0.30   # 低于该相似度弃权（避免 OOD 乱投）
-  max_samples: 8000      # 语料上限（超量按标签均匀抽样）
+  max_samples: 320000    # 语料上限（现有 30 万 + 在线增量余量；超量按标签均匀抽样）
   persist: true          # 向量索引持久化到 .runtime/cache/intent_index/
 
 # Embedding configuration

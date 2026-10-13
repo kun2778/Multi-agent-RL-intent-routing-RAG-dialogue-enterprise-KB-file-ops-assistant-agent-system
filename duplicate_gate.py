@@ -44,9 +44,10 @@ import csv
 import io
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from atomic_io import atomic_write_json, atomic_write_text
 from content_parser import parse_file
@@ -72,35 +73,91 @@ EXIT_PASS = 0
 EXIT_FAIL = 1
 EXIT_ERROR = 2
 
-# 与 analyze.py 同口径的排除目录，外加历史评审快照目录
+# 与 analyze.py 同口径的排除目录，外加历史评审快照目录。
+# 主口径是下面 _git_py_files 的「git 视角」（.gitignore 里的一律不扫）；
+# 这里再兜一层：非 git 检出（zip 下载、git 不可用）走目录遍历时同样不会
+# 扫到本地脚手架 .gitignore 只是没写进这些名字而已。
 EXCLUDE_DIRS = {".git", "__pycache__", ".runtime", ".venv", "node_modules",
-                ".pytest_cache", ".trash", ".backup", ".idea", ".vscode"}
+                ".pytest_cache", ".trash", ".backup", ".idea", ".vscode",
+                "AgentRL_BranchTest"}
 
 
 # ================================================================ 检测
+def _git_py_files(root: Path) -> Optional[List[str]]:
+    """git 视角的 .py 清单：已跟踪 + 未跟踪但未被 .gitignore 忽略。
+
+    与 CI 检出（git clone）同口径 —— 本地临时脚手架只要进了 .gitignore
+    就不会被门禁扫到，新写的、准备入库的文件仍会被扫到。
+
+    root 必须本身就是仓库顶层（否则 git 输出的相对路径以顶层为基准，
+    会读错文件、甚至静默漏检）；非 git 检出 / git 不可用时返回 None，
+    由调用方回退到目录遍历。
+    """
+    try:
+        top = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+            capture_output=True, timeout=30)
+        if top.returncode != 0:
+            return None
+        toplevel = top.stdout.decode("utf-8", "replace").strip()
+        if os.path.normcase(os.path.normpath(toplevel)) != \
+                os.path.normcase(os.path.normpath(str(root))):
+            return None
+        proc = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z",
+             "--cached", "--others", "--exclude-standard", "--", "*.py"],
+            capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return [p for p in proc.stdout.decode("utf-8", "replace").split("\0") if p]
+
+
+def _excluded(rel: str) -> bool:
+    """路径（正斜杠）是否落在排除名单 / review_* 归档里。
+
+    ``review_`` 前缀只对**目录**生效（与目录遍历口径一致），否则
+    ``review_collector.py`` / ``review_pipeline.py`` 这两个正经源码会被误杀。
+    """
+    *dirs, fname = rel.split("/")
+    return any(d in EXCLUDE_DIRS or d.startswith("review_") for d in dirs) \
+        or fname in EXCLUDE_DIRS
+
+
 def collect_source_files(root: Path = PROJECT_ROOT) -> List[Tuple[str, str]]:
     """采集待检源码，返回 [(相对路径, 文件内容), ...]（只收 .py）。
+
+    优先用 git 清单（``_git_py_files``），保证「入库口径」：.gitignore 掉的
+    临时目录不扫、待入库的未跟踪文件照扫；非 git 检出时回退到目录遍历。
 
     排除 ``review_*`` 评审快照：里面是历史归档（还带着
     ``refactored_files.zip!…`` 之类的压缩包成员路径），拿它当被检对象
     会把「已经搬走的旧副本」重新算成当前重复。
     """
     out: List[Tuple[str, str]] = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = sorted(
-            d for d in dirnames
-            if d not in EXCLUDE_DIRS and not d.startswith("review_")
-        )
-        for fname in sorted(filenames):
-            if not fname.endswith(".py"):
-                continue
-            path = Path(dirpath) / fname
-            try:
-                rel = path.relative_to(root).as_posix()
-                text = path.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                continue
-            out.append((rel, text))
+    git_paths = _git_py_files(root)
+    if git_paths is not None:
+        candidates = sorted(p for p in git_paths if not _excluded(p))
+    else:
+        candidates = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = sorted(
+                d for d in dirnames
+                if d not in EXCLUDE_DIRS and not d.startswith("review_")
+            )
+            for fname in sorted(filenames):
+                if fname.endswith(".py"):
+                    candidates.append(
+                        (Path(dirpath) / fname).relative_to(root).as_posix())
+        candidates.sort()
+    for rel in candidates:
+        path = Path(root) / rel
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        out.append((rel, text))
     return out
 
 

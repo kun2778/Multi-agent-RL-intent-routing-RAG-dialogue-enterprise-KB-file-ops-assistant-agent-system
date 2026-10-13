@@ -1,9 +1,7 @@
 import json
 import os
 import re
-import urllib.error
-import urllib.request
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Set
 from agent_state import AgentState, IntentType, RetrievalResult
 from query_rewriter import QueryRewriter
 from file_corpus import FileCorpus
@@ -49,70 +47,69 @@ REACT_SYSTEM_PROMPT = """\
 
 
 class ReActLLMClient:
-    """用于 ReAct 循环的轻量 LLM 客户端（复用 config 配置）。"""
+    """用于 ReAct 循环的 LLM 客户端。
+
+    端点链复用 llm_intent.LLMIntentClassifier：读取 config/app.yaml 的 intent_llm 段，
+    主端点（provider/model）未就绪时自动降级到 intent_llm.fallback 备端点
+    （如本地 Ollama），因此"主端点没配 key"不再等于"LLM 永远不可用"。
+    """
 
     def __init__(self):
-        self.base_url = ""
-        self.api_key = ""
-        self.model = ""
-        self.timeout = 30
-        self._load_config()
+        self._chain = None
+        self._init_error = ""
 
-    def _load_config(self):
-        try:
-            from providers.config_loader import get_config_loader
-            loader = get_config_loader()
-            app = loader.load_app_config() or {}
-            models_cfg = loader.load_models_config() or {}
-
-            gen_cfg = app.get("generation", {})
-            intent_cfg = app.get("intent_llm", {})
-            provider = intent_cfg.get("provider", "deepseek")
-            model = intent_cfg.get("model", "deepseek-chat")
-
-            prov_cfg = (models_cfg.get("providers") or {}).get(provider, {}) or {}
-            self.base_url = (prov_cfg.get("base_url") or "").rstrip("/")
-            self.model = model
-            auth_env = prov_cfg.get("auth_env", "")
-            self.api_key = loader.get_secret(auth_env) if auth_env else ""
-            if not self.api_key:
-                self.api_key = prov_cfg.get("api_key", "")
-            self.timeout = int(intent_cfg.get("timeout", 30))
-        except Exception:
-            pass
+    def _ensure(self):
+        if self._chain is None and not self._init_error:
+            try:
+                from llm_intent import LLMIntentClassifier
+                self._chain = LLMIntentClassifier(quiet=True)
+            except Exception as e:
+                self._init_error = f"端点链初始化失败: {e}"
+        return self._chain
 
     @property
     def available(self) -> bool:
-        return bool(self.base_url and self.api_key and self.model)
+        chain = self._ensure()
+        return bool(chain and chain.available)
+
+    @property
+    def status(self) -> str:
+        chain = self._ensure()
+        if chain:
+            return chain.status
+        return "error" if self._init_error else "unconfigured"
+
+    @property
+    def endpoint(self) -> str:
+        chain = self._ensure()
+        if not chain:
+            return self._init_error or "-"
+        return f"{chain.provider}/{chain.model}"
+
+    @property
+    def reason(self) -> str:
+        """端点链不可用时的可诊断原因（空串表示可用）。"""
+        if self._init_error:
+            return self._init_error
+        chain = self._ensure()
+        if not chain:
+            return "端点链未加载"
+        if chain.available:
+            return ""
+        return chain.status_reason or "未配置可用端点（主端点与 fallback 均未就绪）"
 
     def chat(self, system_prompt: str, user_prompt: str) -> Optional[str]:
-        if not self.available:
+        chain = self._ensure()
+        if not chain or not chain.available:
             return None
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": 0.2,
-            "max_tokens": 600,
-        }
-        body = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            self.base_url + "/chat/completions", data=body, method="POST",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
-            },
+        return chain.chat(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=600,
+            temperature=0.2,
         )
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-            return data["choices"][0]["message"]["content"]
-        except Exception as e:
-            print(f"    [ReAct LLM] 调用失败: {e}")
-            return None
 
 
 def _extract_json(text: str) -> Optional[dict]:
@@ -145,6 +142,9 @@ class DeepSearchHandler:
         self.query_rewriter = QueryRewriter()
         self.llm = ReActLLMClient()
         self.react_steps: List[Dict[str, str]] = []
+        # 本次任务已发出的检索查询（归一化），用于杜绝"同一查询重复检索"
+        self._searched_queries: Set[str] = set()
+        self.intent_slots: Dict[str, Any] = {}
 
     def _build_evidence_context(self, state: AgentState) -> str:
         if not state.evidence:
@@ -165,11 +165,16 @@ class DeepSearchHandler:
 
     def _build_user_prompt(self, query: str, state: AgentState) -> str:
         evidence_ctx = self._build_evidence_context(state)
+        searched = sorted(self._searched_queries) or ["（尚无）"]
         return (
-            f"用户原始问题: {query}\n\n"
+            f"用户原始问题: {query}\n"
+            f"已解析意图: {self.intent_slots.get('task_type', '')}；"
+            f"核心主题: {self.intent_slots.get('core_topics', [])}\n\n"
             f"=== 已收集的证据 ===\n{evidence_ctx}\n\n"
+            f"=== 已检索过的查询（禁止重复） ===\n"
+            + "\n".join(f"- {q}" for q in searched) + "\n\n"
             f"当前是第 {state.current_round}/{self.max_rounds} 轮。\n"
-            f"请分析证据是否充分，输出下一步行动的 JSON。"
+            f"请分析证据缺口，输出下一步行动的 JSON。"
         )
 
     def _parse_react_action(self, llm_output: str) -> Tuple[str, str, str]:
@@ -185,126 +190,216 @@ class DeepSearchHandler:
             return "answer", llm_output[:200], llm_output
         return "search", "尝试基于关键词搜索", ""
 
-    def _rule_based_fallback(self, query: str, state: AgentState) -> Tuple[str, str]:
-        """LLM 不可用时的规则化 ReAct 替代：基于意图分析生成子查询。"""
-        sub_queries = self._decompose_query(query, state)
-        
-        # 收集已检索到的内容关键词
-        retrieved_keywords = set()
+    # 中文停用字：只承担语法功能，其二元组不能当作"证据命中"探针
+    _STOP_CHARS = set(
+        "的了是在和与或及对把被就都很也有个们这那么但而且你您我他她它"
+        "请帮我一下吗呢吧啊呀么嘛之其于以从向给为所并将再又还只则即可"
+        "已未不无非没别"
+    )
+
+    # 查询里出现的分析维度 → 子查询角度（把原始问题拆成多轮可检索的方向）
+    _ASPECT_HINTS = (
+        ("架构", ("架构", "结构", "模块", "组织", "目录", "分层", "框架")),
+        ("性能", ("性能", "瓶颈", "效率", "耗时", "延迟", "吞吐", "优化")),
+        ("依赖", ("依赖", "import", "require", "引用", "耦合", "调用")),
+        ("文档", ("文档", "注释", "readme", "docstring")),
+        ("配置", ("配置", "config", "yaml", "环境变量", "env")),
+        ("质量", ("质量", "复杂度", "重复", "坏味道", "规范", "风格")),
+        ("测试", ("测试", "test", "覆盖率")),
+        ("安全", ("安全", "密钥", "secret", "漏洞", "风险")),
+        ("历史", ("git", "提交", "历史", "修改记录")),
+    )
+
+    _LEAD_VERB_RE = re.compile(
+        r"^(?:请|帮我|帮忙|能不能|可以|麻烦|需要)?"
+        r"(?:一下)?"
+        r"(?:深度|深入|综合|全面|详细|仔细|系统)?"
+        r"(?:分析|研究|评估|审查|检查|总结|汇总|对比|比较|查找|搜索|查询|查看|探索|讨论)"
+    )
+
+    @staticmethod
+    def _norm_query(text: str) -> str:
+        """查询归一化：判定"这个查询是否已经检索过"。"""
+        return re.sub(r"[\s，。！？、,.!?:;；:（）()【】\[\]「」\"'`]+", "", (text or "")).lower()
+
+    @classmethod
+    def _probes(cls, text: str) -> set:
+        """词面探针：ASCII 词 + 中文二元组（无需分词器即可做覆盖率判定）。"""
+        text = (text or "").lower()
+        probes = set(re.findall(r"[a-z0-9_.\-]{3,}", text))
+        han = re.findall(r"[\u4e00-\u9fa5]", text)
+        for i in range(len(han) - 1):
+            bg = han[i] + han[i + 1]
+            if all(c in cls._STOP_CHARS for c in bg):
+                continue
+            probes.add(bg)
+        return probes
+
+    @staticmethod
+    def _detect_aspects(query: str) -> List[str]:
+        """查询中显式提到的分析维度（性能/架构/依赖...）。"""
+        q = (query or "").lower()
+        return [name for name, hints in DeepSearchHandler._ASPECT_HINTS
+                if any(h in q for h in hints)]
+
+    def _topic_of(self, query: str) -> str:
+        """去掉动作动词与语气词，只留主题名词短语，用于拼接子查询。"""
+        core = self._extract_core_query(query)
+        topic = self._LEAD_VERB_RE.sub("", (core or "").strip())
+        topic = re.sub(r"(可以吗|好吗|一下|？|\?|。)+$", "", topic).strip()
+        return topic if topic else (core or "该项目")
+
+    def _build_search_plan(self, query: str) -> List[str]:
+        """把原始问题拆成有序检索角度 —— 与原问题强相关，而非固定模板清单。"""
+        topic = self._topic_of(query)
+        try:
+            targets = self.query_rewriter.extract_targets(query) or []
+        except Exception:
+            targets = []
+        try:
+            _, entities, _ = self.query_rewriter.rewrite(query)
+        except Exception:
+            entities = []
+
+        plan: List[str] = [topic]
+        if len(targets) >= 2:
+            plan.append(f"对比 {targets[0]} 和 {targets[1]} 的差异")
+        for aspect in self._detect_aspects(query):
+            plan.append(f"{topic} 的{aspect}")
+        for ent in entities:
+            if len(plan) >= self.max_rounds:
+                break
+            cand = f"{ent} 的内容与结构"
+            if cand not in plan:
+                plan.append(cand)
+        for filler in ("相关的文件清单", "配置与依赖关系", "实现与关键内容", "潜在风险与缺口"):
+            if len(plan) >= max(self.max_rounds, 3):
+                break
+            plan.append(f"{topic} {filler}")
+
+        seen, ordered = set(), []
+        for sq in plan:
+            key = self._norm_query(sq)
+            if key and key not in seen:
+                seen.add(key)
+                ordered.append(sq)
+        return ordered[:max(self.max_rounds, 1)]
+
+    def _plan_gaps(self, query: str, state: AgentState) -> List[Tuple[str, bool]]:
+        """各检索角度的覆盖情况：探针在已收集证据（路径+正文）中的命中率 ≥ 50% 视为已覆盖。"""
+        plan = self._build_search_plan(query)
+        evidence_text = " ".join(
+            f"{d.get('path', '')} {d.get('content', '')}"
+            for ev in state.evidence for d in ev.documents
+        ).lower()
+
+        gaps: List[Tuple[str, bool]] = []
+        for sq in plan:
+            probes = self._probes(sq)
+            if not probes or not evidence_text:
+                gaps.append((sq, False))
+                continue
+            hits = sum(1 for p in probes if p in evidence_text)
+            gaps.append((sq, hits / len(probes) >= 0.5))
+        return gaps
+
+    def _select_gap_query(self, query: str, state: AgentState
+                          ) -> Tuple[Optional[str], List[Tuple[str, bool]]]:
+        """挑下一个检索角度：只取「既没被证据覆盖、也没检索过」的 —— 循环不退化的关键。"""
+        gaps = self._plan_gaps(query, state)
+        for sq, covered in gaps:
+            if covered or self._norm_query(sq) in self._searched_queries:
+                continue
+            return sq, gaps
+        return None, gaps
+
+    def _rule_based_fallback(self, query: str, state: AgentState) -> Tuple[str, str, str]:
+        """LLM 不可用时的确定性 ReAct 决策：证据缺口驱动 + 查询去重 + 抽取式综合。
+
+        返回 (action, thought, payload)；thought 是真实的缺口分析，而不是把待执行
+        的动作倒填成"思考"。
+        """
+        next_query, gaps = self._select_gap_query(query, state)
+        total = len(gaps)
+        covered_n = sum(1 for _, cov in gaps if cov)
+        tried = len(self._searched_queries)
+        evidence_n = len(state.evidence)
+
+        if next_query:
+            missing = [sq for sq, cov in gaps if not cov][:3]
+            thought = (
+                f"缺口分析：{total} 个检索角度已覆盖 {covered_n} 个，已检索 {tried} 次；"
+                f"尚未覆盖 {missing} → 本轮针对「{next_query}」补充证据"
+            )
+            return "search", thought, next_query
+
+        if covered_n:
+            reason = f"全部检索角度已被证据覆盖（{covered_n}/{total}）"
+        else:
+            reason = f"已穷尽 {total} 个检索角度且证据未命中（{tried} 次检索无新增方向）"
+        thought = f"缺口分析：{reason}，基于现有 {evidence_n} 轮证据综合回答"
+        return "answer", thought, self._synthesize_answer(query, gaps, state)
+
+    def _synthesize_answer(self, query: str, gaps: List[Tuple[str, bool]],
+                           state: AgentState) -> str:
+        """抽取式综合：同文件去重取最高分 → 每个文件挑最相关的句子 → 结构化输出。"""
+        best: Dict[str, Dict] = {}
         for ev in state.evidence:
             for d in ev.documents:
-                content = d.get("content", "")
-                if content:
-                    # 提取有意义的关键词
-                    words = re.findall(r'[\u4e00-\u9fa5]+|[a-zA-Z]+', content[:200])
-                    retrieved_keywords.update(w.lower() for w in words if len(w) > 1)
-        
-        # 计算子查询的覆盖度
-        covered_count = 0
-        for sq in sub_queries:
-            sq_words = set(re.findall(r'[\u4e00-\u9fa5]+|[a-zA-Z]+', sq))
-            sq_words = {w.lower() for w in sq_words if len(w) > 1}
-            # 检查是否有关键词被覆盖
-            if sq_words & retrieved_keywords:
-                covered_count += 1
-        
-        # 判断证据是否充分
-        coverage_ratio = covered_count / len(sub_queries) if sub_queries else 0
-        evidence_count = len(state.evidence)
-        
-        # 证据充分的条件：
-        # 1. 覆盖率超过 60% 且至少 2 轮检索
-        # 2. 或者已经检索了所有子查询
-        if (coverage_ratio >= 0.6 and evidence_count >= 2) or evidence_count >= len(sub_queries):
-            # 生成回答
-            all_contents = []
-            for ev in state.evidence:
-                for d in ev.documents:
-                    c = d.get("content", "")
-                    if c:
-                        all_contents.append(c[:150])
-            summary = "\n".join(all_contents[:10])
-            return "answer", f"基于 {evidence_count} 轮检索的综合分析：\n{summary}"
-        
-        # 选择下一个要检索的子查询（跳过已覆盖的）
-        for i, sq in enumerate(sub_queries):
-            sq_words = set(re.findall(r'[\u4e00-\u9fa5]+|[a-zA-Z]+', sq))
-            sq_words = {w.lower() for w in sq_words if len(w) > 1}
-            if not (sq_words & retrieved_keywords):
-                return "search", sq
-        
-        # 如果所有子查询都已覆盖，选择当前轮次对应的子查询
-        idx = min(state.current_round - 1, len(sub_queries) - 1)
-        return "search", sub_queries[idx]
+                path = d.get("path") or d.get("source") or ""
+                if not path:
+                    continue
+                cur = best.get(path)
+                if cur is None or d.get("score", 0.0) > cur.get("score", 0.0):
+                    item = dict(d)
+                    item["_round"] = ev.round_num
+                    best[path] = item
+        docs = sorted(best.values(), key=lambda x: x.get("score", 0.0), reverse=True)
 
-    def _decompose_query(self, query: str, state: AgentState) -> List[str]:
-        """分解查询为多个子查询，生成正确的检索主题（不把参数当主题）。"""
-        # 先分析意图，获取正确的子查询
-        intent_slots = self._analyze_user_intent(query)
-        
-        # 根据意图类型生成正确的子查询
-        task_type = intent_slots.get("task_type", "")
-        content_conditions = intent_slots.get("content_conditions", [])
-        
-        sub_queries = []
-        
-        # 根据内容条件生成查询
-        if "未注释 TODO/FIXME/XXX/HACK" in content_conditions:
-            sub_queries.append("查找包含 TODO FIXME XXX HACK 标记的代码文件")
-        
-        if "import/require/from 依赖" in content_conditions:
-            sub_queries.append("分析同目录文件之间的 import require from 依赖关系")
-        
-        if "相似度 > 0.82" in content_conditions:
-            sub_queries.append("检测重复代码片段和相似度超过阈值的文件")
-        
-        if "复杂度 > 15" in content_conditions:
-            sub_queries.append("检测函数复杂度过高的文件和代码质量")
-        
-        # 根据分析目标生成查询
-        analysis_targets = intent_slots.get("analysis_targets", [])
-        if "缺失文档" in analysis_targets or "公开 API" in analysis_targets:
-            sub_queries.append("分析公开 API 配置键和文档覆盖情况")
-        if "孤儿模块" in analysis_targets:
-            sub_queries.append("查找未被导入的孤立模块文件")
-        if "未使用导出" in analysis_targets:
-            sub_queries.append("分析未使用的导出函数和变量")
-        
-        # Git 过滤相关查询
-        git_filters = intent_slots.get("git_filters", [])
-        if git_filters:
-            sub_queries.append("结合 git log 分析文件修改历史和作者信息")
-        
-        # 如果没有生成任何查询，使用默认查询
-        if not sub_queries:
-            sub_queries = [
-                "查找包含 TODO FIXME XXX HACK 标记的代码文件",
-                "分析文件之间的导入依赖关系",
-                "检测函数复杂度过高的文件",
-                "分析代码质量和文档覆盖情况"
-            ]
-        
-        return sub_queries
-    
-    def _extract_core_query(self, query: str) -> str:
-        """从查询中提取核心主题，去除参数值和过滤条件。"""
-        # 移除阈值参数模式（如"相似度超过0.82"、"复杂度超过15"）
-        query = re.sub(r'相似度[超过>=]+\s*\d+\.?\d*', '', query)
-        query = re.sub(r'复杂度[超过>=]+\s*\d+\.?\d*', '', query)
-        query = re.sub(r'\d+\.?\d*\s*[或和]\s*\d+\.?\d*', '', query)
-        
-        # 移除过滤扩展名模式（如".tmp/.log/.lock/.min.js/.map"）
-        query = re.sub(r'\.[a-z]+/[.\w/]+', '', query, flags=re.IGNORECASE)
-        query = re.sub(r'\.\w+(?=[\s,，]|$)', '', query)
-        
-        # 移除目录排除条件
-        query = re.sub(r'排除?\s*[\w./]+目录', '', query)
-        query = re.sub(r'除\s*[\w./]+\s*之外', '', query)
-        
-        # 清理多余空格
-        query = re.sub(r'\s+', ' ', query).strip()
-        
-        return query if query else "项目分析"
+        if not docs:
+            tried = "、".join(sq for sq, _ in gaps) or "无"
+            return (f"经过 {len(state.evidence)} 轮检索，语料库中未找到与「{query}」"
+                    f"直接相关的证据。（已尝试角度：{tried}）")
+
+        probes = self._probes(query)
+        lines = [
+            f"基于 {len(state.evidence)} 轮检索、{len(docs)} 个不同文件的证据综合如下：",
+            "",
+            "**关键证据**",
+        ]
+        for i, d in enumerate(docs[:5], 1):
+            sentence = self._best_sentence(d.get("content", ""), probes)
+            lines.append(f"{i}. `{d.get('path', '?')}`"
+                         f"（得分 {d.get('score', 0.0):.4f}，第 {d.get('_round', '?')} 轮）：{sentence}")
+
+        lines += ["", "**检索角度覆盖**"]
+        for sq, cov in gaps:
+            lines.append(f"- [{'已覆盖' if cov else '未覆盖'}] {sq}")
+
+        lines += ["", "**引用来源**"]
+        lines += [f"- {d.get('path', '?')}" for d in docs[:5]]
+        return "\n".join(lines)
+
+    @staticmethod
+    def _best_sentence(content: str, probes) -> str:
+        """从文档正文中挑与查询探针重合度最高的一句话（截断到 200 字）。"""
+        content = (content or "").strip()
+        if not content:
+            return "（无正文）"
+        parts = [p.strip() for p in re.split(r"[。！？!?\n\r；;]+", content) if p.strip()]
+        parts = [p for p in parts if len(p) >= 8] or [content]
+
+        def _score(sentence: str) -> int:
+            low = sentence.lower()
+            return sum(1 for p in probes if p in low)
+
+        best = max(parts, key=_score)
+        return best if len(best) <= 200 else best[:200] + "…"
+
+    def _decompose_query(self, query: str, state: AgentState = None) -> List[str]:
+        """（兼容入口）把查询分解为有序子查询列表。"""
+        return self._build_search_plan(query)
+
 
     def _iterative_retrieve(self, query: str, round_num: int) -> RetrievalResult:
         from fact_query import build_retrieval_result
@@ -324,16 +419,21 @@ class DeepSearchHandler:
     def execute(self, state: AgentState, evaluator, router) -> AgentState:
         query = state.dialog_history[-1].user_query if state.dialog_history else ""
         self.react_steps = []
+        self._searched_queries = set()
 
         print(f"\n  [Deep Search ReAct] 开始 agentic 检索: {query}")
-        print(f"  [LLM] {'可用' if self.llm.available else '不可用，使用规则化回退'}")
-        
-        # 分析用户意图，提取关键槽位
+        if self.llm.available:
+            print(f"  [LLM] 可用（{self.llm.status}: {self.llm.endpoint}）")
+        else:
+            print(f"  [LLM] 不可用（{self.llm.reason}）→ 使用规则化 ReAct 决策")
+
+        # 分析用户意图，提取关键槽位（用于日志与提示词）
         intent_slots = self._analyze_user_intent(query)
-        print(f"  [意图分析] 核心任务: {intent_slots['task_type']}")
-        print(f"  [意图分析] 关键主题: {intent_slots['core_topics']}")
-        print(f"  [意图分析] 过滤条件: {intent_slots['filters']}")
-        print(f"  [意图分析] 输出要求: {intent_slots['output_requirements']}")
+        self.intent_slots = intent_slots
+        print(f"  [意图分析] 核心任务: {intent_slots.get('task_type', '')}")
+        print(f"  [意图分析] 关键主题: {intent_slots.get('core_topics', [])}")
+        print(f"  [意图分析] 过滤条件: {intent_slots.get('filters', [])}")
+        print(f"  [意图分析] 输出要求: {intent_slots.get('outputs', [])}")
 
         for step_i in range(self.max_rounds):
             if state.elapsed_time > state.retrieval_budget:
@@ -345,9 +445,14 @@ class DeepSearchHandler:
 
             if self.llm.available:
                 action, thought, payload = self._llm_react_step(query, state)
+                if action == "search":
+                    candidate = (payload or "").strip()
+                    if not candidate or self._norm_query(candidate) in self._searched_queries:
+                        # LLM 给了空查询或重复查询：不允许原地打转，改用缺口驱动决策
+                        print("  [LLM→规则] 查询为空或已检索过，改用证据缺口决策")
+                        action, thought, payload = self._rule_based_fallback(query, state)
             else:
-                action, payload = self._rule_based_fallback(query, state)
-                thought = f"[规则回退] {'搜索: ' + payload if action == 'search' else '生成回答'}"
+                action, thought, payload = self._rule_based_fallback(query, state)
 
             self.react_steps.append({
                 "step": state.current_round,
@@ -357,14 +462,20 @@ class DeepSearchHandler:
             })
 
             if action == "answer":
-                print(f"  [Thought] {thought[:100]}...")
+                print(f"  [Thought] {thought[:120]}")
                 print(f"  [Action] → answer")
                 if payload:
                     state.terminate(payload)
                 break
 
             search_query = payload if payload else query
-            print(f"  [Thought] {thought[:100]}...")
+            key = self._norm_query(search_query)
+            if key in self._searched_queries:
+                print(f"  [去重] 「{search_query}」已检索过，本轮跳过")
+                continue
+            self._searched_queries.add(key)
+
+            print(f"  [Thought] {thought[:120]}")
             print(f"  [Action] → search: {search_query}")
 
             result = self._iterative_retrieve(search_query, state.current_round)
@@ -386,19 +497,25 @@ class DeepSearchHandler:
         if not state.final_answer:
             done, reason = evaluator.evaluate(state) if evaluator else (True, "已完成检索")
             if not done:
-                print(f"\n  [补充检索] 证据仍不足，执行补充...")
-                state.increment_round()
-                gap_query = " ".join(
-                    doc["content"][:40]
-                    for ev in state.evidence for doc in ev.documents[:1]
-                ) or query
-                result = self._iterative_retrieve(gap_query, state.current_round)
-                
-                # 过滤噪声文件
-                filtered_docs = self._filter_noise_documents(result.documents)
-                result.documents = filtered_docs
-                
-                state.add_evidence(result)
+                gap_query, _ = self._select_gap_query(query, state)
+                if gap_query:
+                    print(f"\n  [补充检索] 证据仍不足（{reason}），针对缺口补充: {gap_query}")
+                    state.increment_round()
+                    self._searched_queries.add(self._norm_query(gap_query))
+                    result = self._iterative_retrieve(gap_query, state.current_round)
+
+                    # 过滤噪声文件
+                    filtered_docs = self._filter_noise_documents(result.documents)
+                    result.documents = filtered_docs
+
+                    state.add_evidence(result)
+                else:
+                    print(f"\n  [终止] 证据仍不足（{reason}），且已无新的检索角度")
+
+            # 收口：只要拿到了证据却还没有答案，就基于现有证据产出可交付的抽取式综合
+            if not state.final_answer and state.evidence:
+                print("  [收口] 基于现有证据生成抽取式综合回答")
+                state.terminate(self._synthesize_answer(query, self._plan_gaps(query, state), state))
 
         return state
     
@@ -411,6 +528,7 @@ class DeepSearchHandler:
             "forbidden_operations": [],
             "allowed_operations": [],
             "scope": "",
+            "filters": [],
             "exclude_dirs": [],
             "exclude_exts": [],
             "exclude_prefixes": [],
@@ -585,7 +703,23 @@ class DeepSearchHandler:
         # ========== 13. 验证要求 ==========
         if "校验" in q or "验证" in q or "不修改原文件" in q:
             intent_slots["need_verification"] = True
-        
+
+        # ========== 14. 汇总字段（日志与提示词共用，保证键始终存在） ==========
+        intent_slots["filters"] = (
+            [f"排除目录 {d}" for d in intent_slots["exclude_dirs"]]
+            + [f"排除扩展名 {e}" for e in intent_slots["exclude_exts"]]
+            + [f"排除前缀 {p}" for p in intent_slots["exclude_prefixes"]]
+            + [f"git 过滤 {g}" for g in intent_slots["git_filters"]]
+        )
+        try:
+            _, entities, _ = self.query_rewriter.rewrite(query)
+        except Exception:
+            entities = []
+        topic = self._topic_of(query)
+        intent_slots["core_topics"] = list(dict.fromkeys(
+            [t for t in [topic] + list(entities) if t]
+        ))
+
         return intent_slots
     
     def _extract_core_query(self, query: str) -> str:
@@ -649,8 +783,8 @@ class DeepSearchHandler:
             return self._parse_react_action(llm_output)
 
         print("  [LLM] 无输出，回退到规则决策")
-        action, payload = self._rule_based_fallback(query, state)
-        return action, f"[规则回退] {payload}", payload
+        action, thought, payload = self._rule_based_fallback(query, state)
+        return action, f"{thought}（LLM 无输出）", payload
 
     def get_react_trace(self) -> List[Dict[str, str]]:
         return self.react_steps

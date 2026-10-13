@@ -8,8 +8,21 @@ class ConfigLoader:
     """Load configuration from YAML files and environment variables."""
 
     def __init__(self, config_dir: str = None):
-        self.config_dir = config_dir or os.path.join(os.path.dirname(__file__), '..', 'config')
+        self.config_dir = config_dir or self._default_config_dir()
         self._cache: Dict[str, Any] = {}
+
+    @staticmethod
+    def _default_config_dir() -> str:
+        """开发环境用项目根 config/；打包后优先 exe 同级 config/（用户可改），回退内置。"""
+        import sys
+        if getattr(sys, "frozen", False):
+            exe_cfg = os.path.join(os.path.dirname(sys.executable), "config")
+            if os.path.isdir(exe_cfg):
+                return exe_cfg
+            bundled = os.path.join(getattr(sys, "_MEIPASS", ""), "config")
+            if os.path.isdir(bundled):
+                return bundled
+        return os.path.join(os.path.dirname(__file__), '..', 'config')
 
     def load_yaml(self, filename: str) -> Dict[str, Any]:
         """Load a YAML configuration file."""
@@ -44,8 +57,12 @@ class ConfigLoader:
         if value:
             return value
 
-        # Fallback to .env file
-        env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+        # Fallback to .env file（打包后优先 exe 同级 .env）
+        import sys
+        if getattr(sys, "frozen", False):
+            env_path = os.path.join(os.path.dirname(sys.executable), ".env")
+        else:
+            env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
         if os.path.exists(env_path):
             from dotenv import load_dotenv
             load_dotenv(env_path)

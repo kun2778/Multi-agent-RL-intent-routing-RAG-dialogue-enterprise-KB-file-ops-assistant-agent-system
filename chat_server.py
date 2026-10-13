@@ -38,7 +38,22 @@ from continuous_learning import get_learning_engine, EvalSplit
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONV_DIR = str(CONVERSATIONS_DIR)
-HTML_PATH = os.path.join(BASE_DIR, "chat.html")
+
+
+def _resolve_html_path() -> str:
+    """定位聊天页面：优先 chat.html，回退 file_control.html。
+    打包后资源可能在 exe 同级目录（app_dir）或 PyInstaller 解包目录（BASE_DIR）。"""
+    from runtime_paths import app_dir
+    names = ("chat.html", "file_control.html")
+    for base in (str(app_dir()), BASE_DIR):
+        for name in names:
+            p = os.path.join(base, name)
+            if os.path.exists(p):
+                return p
+    return os.path.join(BASE_DIR, "chat.html")
+
+
+HTML_PATH = _resolve_html_path()
 
 OP_LABELS = {
     "add": "添加", "delete": "删除", "modify": "修改",
@@ -103,6 +118,23 @@ def build_trace(state: AgentState, agent_rl) -> list:
                     "title": f"ReAct 第{step_num}步 [{action_label}]",
                     "detail": thought[:200],
                     "extra": detail[:200] if detail else "",
+                })
+        except Exception:
+            pass
+
+    if state.current_intent == IntentType.FILELIST_SEARCH:
+        try:
+            system = get_system()
+            for rs in system.router.filelist_handler.get_react_trace():
+                action = rs.get("action", "")
+                action_label = {
+                    "list_dir": "列目录", "scan": "扫描", "match": "过滤",
+                    "registry": "查注册表", "answer": "汇总",
+                }.get(action, action)
+                steps.append({
+                    "title": f"ReAct 第{rs.get('step', '?')}步 [{action_label}]",
+                    "detail": (rs.get("thought") or "")[:200],
+                    "extra": (rs.get("detail") or "")[:200],
                 })
         except Exception:
             pass

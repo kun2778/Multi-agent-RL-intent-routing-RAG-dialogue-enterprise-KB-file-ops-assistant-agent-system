@@ -365,7 +365,15 @@ class ParallelScanner:
         registered_paths = self.registry.get_all_paths()
 
         # 需要删除的文件（在注册表中但不在文件系统中）
-        to_delete = registered_paths - current_paths
+        # 注意：工作区外注册的绝对路径不在扫描范围内，不能因“未出现在
+        # 扫描结果”而删除 —— 仅当磁盘上确实已不存在时才清理。
+        to_delete = set()
+        for p in registered_paths - current_paths:
+            if os.path.isabs(p):
+                if not os.path.exists(p):
+                    to_delete.add(p)
+            else:
+                to_delete.add(p)
         stats.total_deleted = len(to_delete)
 
         # 需要更新的文件（新增或 mtime/hash 变化）

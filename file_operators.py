@@ -95,7 +95,7 @@ class FileOperationHandler:
         target, content, tags = self._split_add(query)
         if not target:
             state.record_operation("add", "", False, "缺少文件名")
-            return OperationOutcome(False, "请提供要添加的文件名。", "add_failure")
+            return OperationOutcome(False, "请提供要添加的文件名。", "missing_slot")
         ok, msg, doc = self.corpus.add_document(target, content, tags)
         state.corpus_size = len(self.corpus.registry)
         state.record_operation("add", doc.get("path", target), ok, msg)
@@ -105,7 +105,14 @@ class FileOperationHandler:
         target = self._extract_target_from_query(query)
         if not target:
             state.record_operation("delete", "", False, "缺少文件名")
-            return OperationOutcome(False, "请提供要删除的文件名。", "delete_failure")
+            return OperationOutcome(False, "请提供要删除的文件名。", "missing_slot")
+
+        # 作用域早检：系统目录/非 C 盘在进入 confirm 流程前就拒绝，
+        # 避免用户确认后才失败（corpus 内部仍有同样的兜底校验）
+        scope_err = self.corpus.check_write_scope(target)
+        if scope_err:
+            state.record_operation("delete", target, False, scope_err)
+            return OperationOutcome(False, scope_err, "delete_failure", target)
 
         if self.safety_manager and self.safety_manager.needs_confirmation(OperationType.DELETE, 1, query):
             record = self.safety_manager.create_operation_record(
@@ -124,7 +131,7 @@ class FileOperationHandler:
         target, content, _ = self._split_add(query)
         if not target:
             state.record_operation("modify", "", False, "缺少文件名")
-            return OperationOutcome(False, "请提供要修改的目标文件。", "modify_failure")
+            return OperationOutcome(False, "请提供要修改的目标文件。", "missing_slot")
         if not content:
             matched = self.corpus._resolve_target(target)
             existing = self.corpus.read_text(target) if matched else None
@@ -132,7 +139,7 @@ class FileOperationHandler:
                 state.record_operation("modify", target, True, f"文件 {target} 已存在，当前内容可查看 view 命令")
                 return OperationOutcome(True, f"文件 {target} 内容未改变（未提供新内容）。可使用 view 查看。", "modify_failure")
             state.record_operation("modify", target, False, "缺少新内容")
-            return OperationOutcome(False, "请说明要修改成什么内容。", "modify_failure")
+            return OperationOutcome(False, "请说明要修改成什么内容。", "missing_slot")
         ok, msg, doc = self.corpus.modify_document(target, new_content=content)
         state.corpus_size = len(self.corpus.registry)
         state.record_operation("modify", doc.get("path", target), ok, msg)

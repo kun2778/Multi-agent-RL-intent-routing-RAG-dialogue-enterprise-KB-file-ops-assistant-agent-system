@@ -102,7 +102,9 @@ from intent_shared import (
     SAMPLE_CONTENT as SHARED_SAMPLE_CONTENT,
 )
 
-MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+from runtime_paths import models_dir as _models_dir
+
+MODEL_DIR = str(_models_dir())
 DEFAULT_MARL_MODEL_PATH = os.path.join(MODEL_DIR, "marl_agents.pth")
 
 # 检查点格式：训练方法由 DQN 改为 MAPPO、观测由 268 改为 272（格式 2），

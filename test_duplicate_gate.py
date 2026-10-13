@@ -12,6 +12,8 @@
 
 import ast
 import os
+import shutil
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -152,6 +154,51 @@ def test_gate_passes_on_current_tree(tmp_path):
           f"评审归档 {result['archived_total']} 对")
 
 
+def test_gate_scans_only_the_committed_tree(tmp_path):
+    """采集口径必须跟 git 一致：.gitignore 掉的脚手架不扫，待入库的照扫。"""
+    if shutil.which("git") is None:
+        print("[SKIP] PATH 里没有 git，跳过 git 口径采集测试")
+        return
+
+    init = subprocess.run(["git", "init", "-q"], cwd=str(tmp_path),
+                          capture_output=True)
+    assert init.returncode == 0, init.stderr.decode("utf-8", "replace")
+
+    src = ("def build_table(a):\n"
+           "    total = 0\n"
+           "    for i in a:\n"
+           "        total += i * 2\n"
+           "    return total\n")
+    (tmp_path / "scratch").mkdir()
+    (tmp_path / "scratch" / "one.py").write_text(src, encoding="utf-8")
+    (tmp_path / "scratch" / "two.py").write_text(src, encoding="utf-8")
+    (tmp_path / "main.py").write_text("import os\n", encoding="utf-8")
+
+    # 脚手架进了 .gitignore → 不得采集（否则本地门禁红于 CI）
+    (tmp_path / ".gitignore").write_text("scratch/\n", encoding="utf-8")
+    rels = [rel for rel, _ in dg.collect_source_files(tmp_path)]
+    assert not any(r.startswith("scratch/") for r in rels), rels
+    assert "main.py" in rels, rels
+
+    # 取消忽略 → 未跟踪但属于待入库内容，必须被扫到
+    (tmp_path / ".gitignore").unlink()
+    rels = [rel for rel, _ in dg.collect_source_files(tmp_path)]
+    assert {"scratch/one.py", "scratch/two.py"} <= set(rels), rels
+    print("[OK] 采集口径 = git 口径（ignore 的不扫 / 待入库的照扫）")
+
+
+def test_collect_keeps_review_prefixed_source_files(tmp_path):
+    """``review_`` 前缀只该排除目录，别误杀 review_collector.py 这类源码。"""
+    if shutil.which("git") is None:
+        print("[SKIP] PATH 里没有 git，跳过")
+        return
+    subprocess.run(["git", "init", "-q"], cwd=str(tmp_path), capture_output=True)
+    (tmp_path / "review_pipeline.py").write_text("x = 1\n", encoding="utf-8")
+    rels = [rel for rel, _ in dg.collect_source_files(tmp_path)]
+    assert "review_pipeline.py" in rels, rels
+    print("[OK] review_*.py 源码未被当归档目录排除")
+
+
 def run_all_tests():
     print("\n" + "#" * 70)
     print("  重复检测 / duplicate_gate 测试")
@@ -168,6 +215,10 @@ def run_all_tests():
 if __name__ == "__main__":
     import tempfile
     with tempfile.TemporaryDirectory() as td:
-        test_gate_fails_on_unbaselined_duplicate(Path(td))
-        test_gate_passes_on_current_tree(Path(td))
+        for name in ("e2e", "current", "gitrepo", "reviewname"):
+            (Path(td) / name).mkdir()
+        test_gate_fails_on_unbaselined_duplicate(Path(td) / "e2e")
+        test_gate_passes_on_current_tree(Path(td) / "current")
+        test_gate_scans_only_the_committed_tree(Path(td) / "gitrepo")
+        test_collect_keeps_review_prefixed_source_files(Path(td) / "reviewname")
     run_all_tests()

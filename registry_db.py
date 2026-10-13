@@ -113,14 +113,24 @@ class RegistryDB:
         """插入或更新文件记录。
 
         Returns:
-            True if inserted, False if updated (mtime unchanged).
+            True if inserted or updated, False if nothing changed.
         """
         with self._get_conn() as conn:
             existing = conn.execute(
-                "SELECT mtime, content_hash FROM files WHERE path = ?", (path,)
+                "SELECT mtime, content_hash, title, type, tags, size, readable "
+                "FROM files WHERE path = ?", (path,)
             ).fetchone()
 
-            if existing and existing["mtime"] == mtime and existing["content_hash"] == content_hash:
+            # 「无变化」必须覆盖所有会被写入的列：只比 mtime+hash 时，
+            # 只改 tags/title 的修改会被短路静默丢弃（修改方却收到成功）。
+            if (existing
+                    and existing["mtime"] == mtime
+                    and existing["content_hash"] == content_hash
+                    and existing["title"] == title
+                    and existing["type"] == file_type
+                    and existing["tags"] == tags
+                    and existing["size"] == size
+                    and existing["readable"] == int(readable)):
                 return False  # 无变化，跳过
 
             conn.execute("""

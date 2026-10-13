@@ -6,7 +6,9 @@ from collections import defaultdict
 from datetime import datetime
 
 ROOT = Path(r"C:\Users\84950\Desktop\AgentRL_IntentRouting")
-EXCLUDE_DIRS = {".git", "__pycache__", ".runtime", ".venv", "node_modules"}
+# AgentRL_BranchTest/ 已被 .gitignore 忽略（本地联调脚手架，CI 检出时不存在）
+EXCLUDE_DIRS = {".git", "__pycache__", ".runtime", ".venv", "node_modules",
+                "AgentRL_BranchTest"}
 
 # ─── helpers ───
 

@@ -216,7 +216,6 @@ class AgentRLSystem:
     def interactive(self):
         print("\n" + "=" * 70)
         print("  AgentRL + Deep Search 对话框系统")
-        print("  输入自然语言即可：添加/删除/修改文件、整理重构、查询、深度分析")
         print("  - 输入「帮助」查看指令  -「列出」查看语料库  -「退出/exit」结束")
         print("  - 语料库目录: " + self.corpus.root)
         print("=" * 70)

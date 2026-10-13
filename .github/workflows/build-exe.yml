@@ -1,0 +1,65 @@
+name: Build Desktop EXE
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install CPU torch (体积优化)
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Cache HuggingFace model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-bge-small-zh-${{ hashFiles('requirements.txt') }}
+
+      - name: Build EXE (onedir)
+        run: python -m PyInstaller packaging/AgentRL.spec --noconfirm --clean
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          # 复制 env 模板（不含密钥）
+          if (Test-Path .env.example) { Copy-Item .env.example dist/AgentRL/.env }
+          Compress-Archive -Path dist/AgentRL/* -DestinationPath release/AgentRL-win64.zip -Force
+          $mb = [math]::Round((Get-Item release/AgentRL-win64.zip).Length / 1MB, 1)
+          Write-Host "Artifact size: ${mb} MB"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AgentRL-win64
+          path: release/AgentRL-win64.zip
+          retention-days: 14
+
+      - name: Attach to Release (tag only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/AgentRL-win64.zip
+          generate_release_notes: true

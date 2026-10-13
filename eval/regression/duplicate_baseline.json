@@ -53,7 +53,6 @@
     "datasets/generate_corpus_v2.py::gen_delete_file|datasets/generate_corpus_v2.py::gen_query",
     "datasets/generate_corpus_v2.py::gen_modify_file|datasets/generate_corpus_v2.py::gen_query",
     "deep_search.py::_extract_json|llm_intent.py::_extract_json",
-    "deep_search.py::available|mcp_server/ocr_module.py::is_configured",
     "deep_search.py::get_corpus_stats|fact_query.py::get_stats",
     "embedding.py::_tokenize|rerank.py::_tokens",
     "embedding.py::fit_transform|embedding.py::transform",
