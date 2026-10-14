@@ -131,9 +131,17 @@ vault:
 
 # OCR Configuration
 ocr:
-  enabled: false
-  # 主要OCR提供商
-  provider: "baidu"  # baidu, tencent, alibaba, tesseract
+  enabled: true
+  # 主力OCR提供商: rapidocr(免费离线,进程内) | baidu | tencent | tesseract
+  provider: "rapidocr"
+  # RapidOCR 配置（主力，免费离线）
+  rapidocr:
+    enabled: true
+  # PaddleOCR-VL 配置（低置信度兜底，慢但准，走独立venv常驻worker）
+  paddleocr_vl:
+    enabled: true
+    # 主力置信度低于该阈值时触发兜底（在 ocr_handler.py 中生效）
+    fallback_threshold: 0.60
   # 百度OCR配置
   baidu:
     api_key_env: "BAIDU_OCR_API_KEY"
@@ -150,7 +158,7 @@ ocr:
     access_key_id_env: "ALIBABA_OCR_ACCESS_KEY_ID"
     access_key_secret_env: "ALIBABA_OCR_ACCESS_KEY_SECRET"
     endpoint: "ocr-api.cn-hangzhou.aliyuncs.com"
-  # Tesseract本地OCR（免费）
+  # Tesseract本地OCR（免费，最后备选）
   tesseract:
     language: "chi_sim+eng"  # 中文+英文
     custom_config: ""

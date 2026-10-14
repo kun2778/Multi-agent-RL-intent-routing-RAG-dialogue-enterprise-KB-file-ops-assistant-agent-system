@@ -23,6 +23,7 @@ class OCRResult:
     confidence: float
     source_file: str
     processing_time_ms: int = 0
+    provider: str = ""
 
 
 class ScreenshotFinder:
@@ -139,13 +140,15 @@ class OCRHandler:
         return self._ocr_manager
 
     def _create_local_ocr(self):
-        """创建本地Tesseract OCR作为备选。"""
+        """创建本地OCR作为备选（RapidOCR 优先，Tesseract 兜底）。"""
         try:
-            from mcp_server.ocr_module import TesseractOCR, OCRManager
-            tesseract = TesseractOCR()
+            from mcp_server.ocr_module import RapidOCRProvider, TesseractOCR, OCRManager
             manager = OCRManager.__new__(OCRManager)
-            manager.providers = {"tesseract": tesseract}
-            manager.config = {"provider": "tesseract"}
+            manager.providers = {
+                "rapidocr": RapidOCRProvider(),
+                "tesseract": TesseractOCR(),
+            }
+            manager.config = {"provider": "rapidocr"}
             return manager
         except Exception:
             return None
@@ -190,28 +193,63 @@ class OCRHandler:
         screenshot_keywords = ["截屏", "截图", "屏幕", "screen", "screenshot"]
         return any(rk in q for rk in time_keywords) and any(sk in q for sk in screenshot_keywords)
 
+    # 主链置信度低于此阈值时，触发 PaddleOCR-VL 兜底（慢但准）
+    VL_FALLBACK_THRESHOLD = 0.60
+
     def _perform_ocr(self, image_path: str) -> Optional[OCRResult]:
-        """执行OCR识别。"""
+        """执行OCR识别：先走主力链（RapidOCR/云），低置信度时用 PaddleOCR-VL 兜底。"""
         manager = self._get_ocr_manager()
         if manager is None:
             return self._fallback_tesseract(image_path)
 
+        primary = self._run_provider_chain(manager, image_path)
+        if primary is None:
+            return self._fallback_tesseract(image_path)
+
+        # 低置信度 -> PaddleOCR-VL 兜底
+        if primary.confidence < self.VL_FALLBACK_THRESHOLD:
+            print(f"  [OCR] 主力置信度 {primary.confidence:.2f} < {self.VL_FALLBACK_THRESHOLD}，"
+                  f"触发 PaddleOCR-VL 兜底（约数分钟）...")
+            vl = self._run_vl_fallback(manager, image_path)
+            if vl is not None and (vl.confidence > primary.confidence or not primary.text.strip()):
+                print(f"  [OCR] PaddleOCR-VL 兜底命中 (conf {vl.confidence:.2f})")
+                return vl
+        return primary
+
+    def _run_provider_chain(self, manager, image_path: str) -> Optional[OCRResult]:
+        """跑主力 provider 链（RapidOCR -> 云 -> tesseract），返回首个成功结果。"""
         try:
             start_time = time.time()
             result = manager.recognize(image_path=image_path)
             processing_time = int((time.time() - start_time) * 1000)
-
             if result and result.text:
                 return OCRResult(
                     text=result.text,
                     confidence=result.confidence,
                     source_file=image_path,
                     processing_time_ms=processing_time,
+                    provider=result.provider,
                 )
         except Exception as e:
-            print(f"  [OCR] 识别失败: {e}")
-            return self._fallback_tesseract(image_path)
+            print(f"  [OCR] 主力链识别失败: {e}")
+        return None
 
+    def _run_vl_fallback(self, manager, image_path: str) -> Optional[OCRResult]:
+        """调用 PaddleOCR-VL provider 兜底。"""
+        try:
+            start_time = time.time()
+            result = manager.recognize(image_path=image_path, provider="paddleocr_vl")
+            processing_time = int((time.time() - start_time) * 1000)
+            if result and result.text:
+                return OCRResult(
+                    text=result.text,
+                    confidence=result.confidence,
+                    source_file=image_path,
+                    processing_time_ms=processing_time,
+                    provider="paddleocr_vl",
+                )
+        except Exception as e:
+            print(f"  [OCR] PaddleOCR-VL 兜底失败: {e}")
         return None
 
     def _fallback_tesseract(self, image_path: str) -> Optional[OCRResult]:
@@ -240,8 +278,9 @@ class OCRHandler:
 
     def _format_ocr_result(self, result: OCRResult, query: str) -> str:
         """格式化OCR识别结果。"""
+        provider_disp = f" [{result.provider}]" if result.provider else ""
         lines = [
-            f"  [OCR识别结果]",
+            f"  [OCR识别结果{provider_disp}]",
             f"  来源文件: {result.source_file}",
             f"  识别置信度: {result.confidence:.1%}",
             f"  处理时间: {result.processing_time_ms}ms",

@@ -53,3 +53,6 @@ duplicate-gate.json
 gate-report.json
 gate-report-marl.json
 AgentRL_BranchTest/
+
+# 独立 OCR 虚拟环境（PaddleOCR-VL，~GB 级二进制）
+venv-paddle/

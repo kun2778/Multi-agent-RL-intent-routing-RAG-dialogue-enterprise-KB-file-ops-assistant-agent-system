@@ -21,6 +21,7 @@ class OCRResult:
     language: str = "unknown"
     raw_data: Dict = None
     processing_time_ms: int = 0
+    provider: str = ""
 
 
 class OCRProvider(ABC):
@@ -242,6 +243,156 @@ class TesseractOCR(OCRProvider):
         )
 
 
+class RapidOCRProvider(OCRProvider):
+    """RapidOCR本地OCR（PP-OCRv4，免费离线，进程内，速度与质量均衡的主力）"""
+
+    def __init__(self):
+        self._engine = None
+        self._available = None
+
+    def is_configured(self) -> bool:
+        if self._available is None:
+            try:
+                from rapidocr_onnxruntime import RapidOCR  # noqa: F401
+                self._available = True
+            except Exception:
+                self._available = False
+        return self._available
+
+    def _get_engine(self):
+        if self._engine is None:
+            from rapidocr_onnxruntime import RapidOCR
+            self._engine = RapidOCR()
+        return self._engine
+
+    def recognize(self, image_path: str = None, image_bytes: bytes = None) -> OCRResult:
+        import numpy as np
+        import time as _time
+
+        engine = self._get_engine()
+        start = _time.time()
+
+        # RapidOCR 接受文件路径或 numpy array
+        target = image_path
+        if image_bytes is not None:
+            from PIL import Image
+            import io as _io
+            img = Image.open(_io.BytesIO(image_bytes)).convert("RGB")
+            target = np.array(img)
+
+        result, _elapse = engine(target)
+        processing_time = int((_time.time() - start) * 1000)
+
+        texts = []
+        confidences = []
+        if result:
+            for item in result:
+                # item = [bbox, text, conf]
+                if len(item) >= 3:
+                    texts.append(item[1])
+                    confidences.append(float(item[2]))
+
+        avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
+
+        return OCRResult(
+            text="\n".join(texts),
+            confidence=avg_conf,
+            language="zh+en",
+            processing_time_ms=processing_time,
+        )
+
+
+class PaddleOCRVLProvider(OCRProvider):
+    """PaddleOCR-VL（0.9B VLM，准但慢，作为低置信度兜底）。
+
+    通过 subprocess 调用独立 venv 中的常驻 worker（paddle_ocr_worker.py），
+    模型只加载一次，复用进程。CPU 单图约数分钟，仅在兜底时触发。
+    """
+
+    def __init__(self, worker_py: str = None, venv_python: str = None,
+                 startup_timeout: float = 300.0, request_timeout: float = 900.0):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.worker_script = worker_py or os.path.join(base_dir, "paddle_ocr_worker.py")
+        self.venv_python = venv_python or os.path.join(base_dir, "venv-paddle", "Scripts", "python.exe")
+        self.startup_timeout = startup_timeout
+        self.request_timeout = request_timeout
+        self._proc = None
+
+    def is_configured(self) -> bool:
+        return os.path.exists(self.venv_python) and os.path.exists(self.worker_script)
+
+    def _ensure_worker(self):
+        import subprocess
+        if self._proc is not None and self._proc.poll() is None:
+            return
+        # 启动常驻 worker（stdin/stdout 管道）
+        self._proc = subprocess.Popen(
+            [self.venv_python, "-X", "utf8", self.worker_script],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            bufsize=1,
+        )
+        # 等待 worker 就绪：发 ping 直到收到 pong
+        import select
+        deadline = time.time() + self.startup_timeout
+        while time.time() < deadline:
+            self._proc.stdin.write(json.dumps({"cmd": "ping"}) + "\n")
+            self._proc.stdin.flush()
+            line = self._proc.stdout.readline()
+            if not line:
+                break
+            try:
+                resp = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if resp.get("pong"):
+                return
+        raise RuntimeError("PaddleOCR-VL worker 启动超时")
+
+    def recognize(self, image_path: str = None, image_bytes: bytes = None) -> OCRResult:
+        if not image_path:
+            raise ValueError("PaddleOCR-VLProvider 仅支持 image_path")
+        self._ensure_worker()
+
+        start = time.time()
+        self._proc.stdin.write(json.dumps({"image_path": image_path}, ensure_ascii=False) + "\n")
+        self._proc.stdin.flush()
+        line = self._proc.stdout.readline()
+        processing_time = int((time.time() - start) * 1000)
+
+        if not line:
+            self._proc = None  # worker 挂了，下次重启
+            raise RuntimeError("PaddleOCR-VL worker 无响应")
+
+        resp = json.loads(line)
+        if not resp.get("ok"):
+            self._proc = None
+            raise RuntimeError(resp.get("error", "PaddleOCR-VL 识别失败"))
+
+        return OCRResult(
+            text=resp.get("text", ""),
+            confidence=float(resp.get("confidence", 0.0)),
+            language="zh+en",
+            processing_time_ms=processing_time,
+        )
+
+    def shutdown(self):
+        if self._proc is not None and self._proc.poll() is None:
+            try:
+                self._proc.stdin.write(json.dumps({"cmd": "quit"}) + "\n")
+                self._proc.stdin.flush()
+            except Exception:
+                pass
+            try:
+                self._proc.terminate()
+            except Exception:
+                pass
+        self._proc = None
+
+
 class OCRManager:
     """OCR管理器 - 统一管理多个OCR提供商"""
     
@@ -262,7 +413,7 @@ class OCRManager:
     
     def _init_providers(self):
         """初始化OCR提供商"""
-        provider = self.config.get("provider", "tesseract")
+        provider = self.config.get("provider", "rapidocr")
         
         # 百度OCR
         if provider == "baidu" or "baidu" in str(self.config):
@@ -272,7 +423,14 @@ class OCRManager:
         if provider == "tencent" or "tencent" in str(self.config):
             self.providers["tencent"] = TencentOCR()
         
-        # Tesseract（始终可用作为备选）
+        # RapidOCR（主力，进程内，免费离线）
+        self.providers["rapidocr"] = RapidOCRProvider()
+        
+        # PaddleOCR-VL（兜底，慢但准）
+        if self.config.get("paddleocr_vl", {}).get("enabled", True):
+            self.providers["paddleocr_vl"] = PaddleOCRVLProvider()
+        
+        # Tesseract（最后备选）
         self.providers["tesseract"] = TesseractOCR(
             language=self.config.get("tesseract", {}).get("language", "chi_sim+eng")
         )
@@ -285,10 +443,12 @@ class OCRManager:
                 return provider
             return None
         
-        # 按优先级查找
-        preferred_order = [self.config.get("provider", ""), "baidu", "tencent", "tesseract"]
-        for name in preferred_order:
-            provider = self.providers.get(name)
+        # 主链优先级：配置指定 > rapidocr > 云 > tesseract
+        preferred_order = [self.config.get("provider", ""), "rapidocr", "baidu", "tencent", "tesseract"]
+        for pname in preferred_order:
+            if not pname:
+                continue
+            provider = self.providers.get(pname)
             if provider and provider.is_configured():
                 return provider
         
@@ -301,7 +461,14 @@ class OCRManager:
         if not ocr_provider:
             raise RuntimeError("No configured OCR provider available")
         
-        return ocr_provider.recognize(image_path=image_path, image_bytes=image_bytes)
+        result = ocr_provider.recognize(image_path=image_path, image_bytes=image_bytes)
+        if result is not None and not result.provider:
+            # 标注实际使用的 provider 名
+            for pname, pobj in self.providers.items():
+                if pobj is ocr_provider:
+                    result.provider = pname
+                    break
+        return result
     
     def get_available_providers(self) -> List[str]:
         """获取可用的OCR提供商列表"""
