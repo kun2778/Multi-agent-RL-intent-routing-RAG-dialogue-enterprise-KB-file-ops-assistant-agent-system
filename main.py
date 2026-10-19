@@ -153,7 +153,7 @@ class AgentRLSystem:
                 "extra": f"结果[{'成功' if ev.success else '失败'}]: {ev.message}",
             })
         for r in state.evidence:
-            files = [d.get("path") for d in r.documents if d.get("path")]
+            files = [d.get("path") or d.get("source") or "?" for d in r.documents]
             steps.append({
                 "title": "文档检索",
                 "detail": f"第 {r.round_num} 轮向量检索命中 {len(files)} 个文件",

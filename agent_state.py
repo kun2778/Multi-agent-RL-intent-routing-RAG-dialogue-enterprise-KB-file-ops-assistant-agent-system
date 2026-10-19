@@ -4,7 +4,31 @@ from enum import Enum
 import time
 import numpy as np
 
-from rl_config import get_max_rounds, get_retrieval_budget
+from rl_config import (
+    get_max_rounds,
+    get_retrieval_budget,
+    get_llm_context_budget,
+    get_llm_dialog_window,
+)
+
+_CJK_CHAR_RANGES = (
+    (0x4E00, 0x9FFF), (0x3400, 0x4DBF), (0xF900, 0xFAFF),
+    (0x20000, 0x2A6DF), (0x2A700, 0x2B73F),
+)
+
+
+def estimate_tokens(text: str) -> int:
+    if not text:
+        return 0
+    cjk = 0
+    other = 0
+    for ch in text:
+        cp = ord(ch)
+        if any(lo <= cp <= hi for lo, hi in _CJK_CHAR_RANGES):
+            cjk += 1
+        else:
+            other += 1
+    return int(cjk * 1.5) + (other + 3) // 4
 
 
 class IntentType(Enum):
@@ -315,3 +339,81 @@ class AgentState:
             f"终止: {self.is_terminated}\n"
             f"=========================="
         )
+
+    def build_llm_context(self, budget_tokens: Optional[int] = None,
+                          include_evidence: bool = True) -> str:
+        if budget_tokens is None:
+            budget_tokens = get_llm_context_budget()
+        window = get_llm_dialog_window()
+
+        query = self.dialog_history[-1].user_query if self.dialog_history else ""
+        must_parts = []
+        if query:
+            must_parts.append(f"[当前查询]\n{query}")
+        if self.slots:
+            slot_lines = [f"{k}: {v}" for k, v in self.slots.items()
+                          if v not in (None, "", [], {}, "present", "absent")]
+            if slot_lines:
+                must_parts.append("[槽位]\n" + "\n".join(slot_lines))
+        if include_evidence:
+            ev_block = self._evidence_block(top_k=8)
+            if ev_block:
+                must_parts.append(ev_block)
+
+        recent = self.dialog_history[-window:-1] if window > 0 and len(self.dialog_history) > 1 else []
+        op_events = list(self.operation_history)
+
+        def _compose(dialogs, ops):
+            parts = list(must_parts)
+            if dialogs:
+                lines = []
+                for d in dialogs:
+                    if d.user_query:
+                        lines.append(f"用户: {d.user_query}")
+                    if d.assistant_response:
+                        lines.append(f"助手: {d.assistant_response[:200]}")
+                if lines:
+                    parts.append("[对话历史]\n" + "\n".join(lines))
+            if ops:
+                op_lines = [
+                    f"{'✓' if e.success else '✗'} {e.kind} {e.target}: {e.message[:120]}"
+                    for e in ops
+                ]
+                parts.append("[操作历史]\n" + "\n".join(op_lines))
+            return "\n\n".join(parts)
+
+        result = _compose(recent, op_events)
+        while estimate_tokens(result) > budget_tokens and recent:
+            recent = recent[1:]
+            result = _compose(recent, op_events)
+        while estimate_tokens(result) > budget_tokens and op_events:
+            op_events = op_events[1:]
+            result = _compose(recent, op_events)
+        return result
+
+    def _evidence_block(self, top_k: int = 8) -> str:
+        if not self.evidence:
+            return ""
+        seen = set()
+        items = []
+        for ev in self.evidence:
+            for doc in ev.documents:
+                content = doc.get("content", "")
+                if content and content not in seen:
+                    seen.add(content)
+                    items.append({
+                        "path": doc.get("path", doc.get("source", "未知")),
+                        "score": doc.get("score", 0.0),
+                        "round": ev.round_num,
+                        "content": content,
+                    })
+        items.sort(key=lambda x: x["score"], reverse=True)
+        lines = []
+        for i, it in enumerate(items[:top_k], 1):
+            lines.append(
+                f"[证据{i}] (来源: {it['path']}, 得分: {it['score']:.4f}, 轮次: {it['round']})\n"
+                f"{it['content']}"
+            )
+        if not lines:
+            return ""
+        return "### 检索到的证据 ###\n" + "\n".join(lines)

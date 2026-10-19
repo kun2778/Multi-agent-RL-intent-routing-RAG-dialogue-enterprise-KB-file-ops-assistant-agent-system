@@ -23,6 +23,13 @@ rl:
   batch_size: 32
   target_update_tau: 0.005
 
+# LLM 上下文组装（AgentState.build_llm_context）：结构化抽取为主 + 滑窗/截断兜底 + token 硬预算。
+#   budget_tokens 估算口径：中文 ~1.5 token/字、ASCII ~0.25 token/字符（无 tokenizer 依赖的保守近似）。
+#   超预算时从最旧对话轮开始丢；对话丢完仍超则截断操作历史。
+llm_context:
+  budget_tokens: 3000
+  dialog_window: 8
+
 # LLM 意图路由：DeepSeek 为主端点，本地 Ollama 为备端点
 intent_llm:
   provider: "deepseek"

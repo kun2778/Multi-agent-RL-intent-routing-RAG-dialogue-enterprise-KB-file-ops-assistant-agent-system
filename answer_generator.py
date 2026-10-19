@@ -1,5 +1,5 @@
 import os
-from typing import List, Dict, Any
+from typing import List
 from agent_state import AgentState, IntentType
 
 try:
@@ -70,7 +70,7 @@ class AnswerGenerator:
             return self._format(state.final_answer, state)
 
         query = state.dialog_history[0].user_query if state.dialog_history else ""
-        context = self._compress_context(state)
+        context = state.build_llm_context()
         result = self._build_search_answer(query, context, state)
         return self._format(result, state)
 
@@ -101,27 +101,6 @@ class AnswerGenerator:
         lines.append("\n### 引用来源:")
         lines.extend(self._generate_citations(state))
         return "\n".join(lines)
-
-    def _compress_context(self, state: AgentState) -> str:
-        seen = set()
-        items = []
-        for ev in state.evidence:
-            for doc in ev.documents:
-                content = doc.get("content", "")
-                if content and content not in seen:
-                    seen.add(content)
-                    items.append({
-                        "path": doc.get("path", doc.get("source", "未知")),
-                        "score": doc.get("score", 0.0),
-                        "round": ev.round_num,
-                        "content": content,
-                    })
-        items.sort(key=lambda x: x["score"], reverse=True)
-        context = "### 检索到的证据 ###"
-        for i, it in enumerate(items[:8], 1):
-            context += f"\n[证据{i}] (来源: {it['path']}, 得分: {it['score']:.4f}, 轮次: {it['round']})\n"
-            context += f"{it['content']}\n"
-        return context
 
     def _generate_citations(self, state: AgentState) -> List[str]:
         citations = []

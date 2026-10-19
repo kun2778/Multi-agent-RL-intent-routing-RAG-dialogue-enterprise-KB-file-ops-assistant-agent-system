@@ -67,7 +67,7 @@ from intent_shared import (
 from atomic_io import read_json as read_json_file
 from query_rewriter import QueryRewriter
 from llm_intent import LLMIntentClassifier
-from intent_retriever import get_intent_retriever
+from intent_retriever import VERBATIM_MIN_SIM, get_intent_retriever
 from transformer_arch import (
     TransformerDuelingQNetworkWithNSP, TransformerClassificationHead,
     EngramConditionalMemory,
@@ -1114,6 +1114,18 @@ class AgentRL:
         # 旧实现 Σ/n 取均值 → 多一路同向共识反而降分；排序与置信度共用这一个数。
         votes = aggregate_votes(candidates)
 
+        # 近逐字命中短路：语料标签即权威（与 IntentRetriever.vote 的
+        # VERBATIM_MIN_SIM 快捷方式同口径）。否则聚合路里 qnet/rule 的
+        # 高置信错票（如 add_file@1.0 遇「分析X的复杂度」，再被冲突护栏
+        # 改写成 file_analysis）会以单路 0.85~1.0 的得分压过检索路
+        # 0.75 权重下的逐字正确票；逐字命中直接采纳，不参与加权。
+        # 直接 return 跳过 _semantic_conflict_guard：conf≥0.98 已高于
+        # CONFIDENCE_THRESHOLD，engram/低置信回退本就不会执行，return
+        # 仅跳过 guard。guard 的关键词启发式会误伤逐字命中的正确标签
+        # （例：「生成报告文件 log.txt」语料标 add_file，guard 见「报告」
+        # 改写成 report_generate）。marl 侧同口径，见 marl_agent._arbitrate。
+        if ret_intent is not None and ret_conf >= VERBATIM_MIN_SIM:
+            return ret_intent, float(min(1.0, ret_conf))
         final_intent = max(votes, key=lambda k: votes[k]["score"])
         final_conf = _shared_vote_confidence(votes, final_intent)
 

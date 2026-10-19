@@ -42,6 +42,9 @@ except ImportError:
 DEFAULT_TOP_K = 5
 DEFAULT_MIN_SIM = 0.30          # 低于该相似度弃权，避免 OOD 乱投
 DEFAULT_MAX_SAMPLES = 8000      # 语料上限（超过则均匀抽样，控制首建耗时）
+#: 近逐字命中阈值：相似度 ≥ 此值时语料行标签即权威。vote() 的快捷返回与
+#: classify_intent 的短路聚合必须同口径，改这里即同时改两端。
+VERBATIM_MIN_SIM = 0.98
 DEFAULT_PERSIST = True
 
 
@@ -378,7 +381,7 @@ class IntentRetriever:
         # 否则按 top-k 求和聚合时，同一模板的近重复聚类（如 3×0.60）
         # 会以「条数和」压过逐字匹配（1×1.0），把精确命中投成别的标签。
         top = hits[0]
-        if top["similarity"] >= 0.98:
+        if top["similarity"] >= VERBATIM_MIN_SIM:
             try:
                 intent = IntentType(top["label"])
             except ValueError:

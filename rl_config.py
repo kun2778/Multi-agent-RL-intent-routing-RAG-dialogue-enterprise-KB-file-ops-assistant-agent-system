@@ -19,6 +19,12 @@ DEFAULT_MAX_ROUNDS = 6
 DEFAULT_RETRIEVAL_BUDGET = 300.0
 DEFAULT_TIME_THRESHOLD = 120.0
 
+# ---- LLM 上下文组装预算（AgentState.build_llm_context）----
+# budget_tokens: 单次注入 LLM 的结构化上下文 token 预算（估算值，中文按 ~1.5 token/字保守估）
+# dialog_window: 对话历史滑窗保留的最近轮数（超预算先丢最旧一轮）
+DEFAULT_LLM_CONTEXT_BUDGET = 3000
+DEFAULT_LLM_DIALOG_WINDOW = 8
+
 # yaml 奖励键别名 → 代码实际使用的奖励键（agent_rl.REWARD_MAP / router 的 reward_key）
 REWARD_KEY_ALIASES: Dict[str, str] = {
     "file_add_success": "add_success",
@@ -88,6 +94,11 @@ def load_rl_config() -> Dict[str, Any]:
         reward = intent_llm.get("reward") if isinstance(intent_llm, dict) else None
         if isinstance(reward, dict):
             cfg["reward"] = _normalize_rewards(reward)
+
+        llm_ctx = app.get("llm_context")
+        if isinstance(llm_ctx, dict):
+            cfg["llm_context_budget"] = _as_int(llm_ctx.get("budget_tokens"))
+            cfg["llm_context_dialog_window"] = _as_int(llm_ctx.get("dialog_window"))
     except Exception as e:
         print(f"  [配置] config/app.yaml 读取失败({e})，使用代码默认值。")
 
@@ -95,28 +106,38 @@ def load_rl_config() -> Dict[str, Any]:
     return cfg
 
 
+def _rl_value(key: str, default: Any) -> Any:
+    """读取 rl 配置项；缺失（None）时回退到代码内置默认值。"""
+    value = load_rl_config().get(key)
+    return default if value is None else value
+
+
 def get_rl_gamma() -> float:
-    value = load_rl_config().get("gamma")
-    return DEFAULT_GAMMA if value is None else value
+    return _rl_value("gamma", DEFAULT_GAMMA)
 
 
 def get_max_rounds() -> int:
-    value = load_rl_config().get("max_rounds")
-    return DEFAULT_MAX_ROUNDS if value is None else value
+    return _rl_value("max_rounds", DEFAULT_MAX_ROUNDS)
 
 
 def get_retrieval_budget() -> float:
-    value = load_rl_config().get("retrieval_budget")
-    return DEFAULT_RETRIEVAL_BUDGET if value is None else value
+    return _rl_value("retrieval_budget", DEFAULT_RETRIEVAL_BUDGET)
 
 
 def get_time_threshold() -> float:
     """TerminationPolicy 的时间预算（秒）：配置存在时与 rl.retrieval_budget 同源，
     无配置时保持其历史默认值。"""
-    value = load_rl_config().get("retrieval_budget")
-    return DEFAULT_TIME_THRESHOLD if value is None else value
+    return _rl_value("retrieval_budget", DEFAULT_TIME_THRESHOLD)
 
 
 def get_reward_overrides() -> Dict[str, float]:
     """intent_llm.reward 归一后的奖励覆盖表（键已与 REWARD_MAP 对齐）。"""
     return dict(load_rl_config().get("reward") or {})
+
+
+def get_llm_context_budget() -> int:
+    return _rl_value("llm_context_budget", DEFAULT_LLM_CONTEXT_BUDGET)
+
+
+def get_llm_dialog_window() -> int:
+    return _rl_value("llm_context_dialog_window", DEFAULT_LLM_DIALOG_WINDOW)

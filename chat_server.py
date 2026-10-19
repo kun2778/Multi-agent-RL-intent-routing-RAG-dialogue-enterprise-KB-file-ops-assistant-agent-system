@@ -107,13 +107,16 @@ def build_trace(state: AgentState, agent_rl) -> list:
     if state.current_intent == IntentType.DEEP_SEARCH:
         try:
             system = get_system()
-            react_steps = system.router.deep_search_handler.get_react_trace()
+            react_steps = system.router.deep_search_handler.react_steps
             for rs in react_steps:
                 step_num = rs.get("step", "?")
                 thought = rs.get("thought", "")
                 action = rs.get("action", "")
                 detail = rs.get("detail", "")
-                action_label = "思考+搜索" if action == "search" else "思考+生成回答"
+                action_label = {
+                    "search": "思考+搜索", "refine": "换角度重搜", "verify": "交叉验证",
+                    "bridge": "补缺口检索", "answer": "思考+生成回答",
+                }.get(action, action)
                 steps.append({
                     "title": f"ReAct 第{step_num}步 [{action_label}]",
                     "detail": thought[:200],
@@ -125,7 +128,7 @@ def build_trace(state: AgentState, agent_rl) -> list:
     if state.current_intent == IntentType.FILELIST_SEARCH:
         try:
             system = get_system()
-            for rs in system.router.filelist_handler.get_react_trace():
+            for rs in system.router.filelist_handler.trace:
                 action = rs.get("action", "")
                 action_label = {
                     "list_dir": "列目录", "scan": "扫描", "match": "过滤",
@@ -149,7 +152,7 @@ def build_trace(state: AgentState, agent_rl) -> list:
         })
 
     for r in state.evidence:
-        files = [d.get("path") for d in r.documents]
+        files = [d.get("path") or d.get("source") or "?" for d in r.documents]
         steps.append({
             "title": "文档检索",
             "detail": f"第 {r.round_num} 轮向量检索命中 {len(files)} 个文件",

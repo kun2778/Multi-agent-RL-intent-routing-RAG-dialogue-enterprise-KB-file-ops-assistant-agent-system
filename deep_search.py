@@ -1,48 +1,42 @@
 import json
-import os
 import re
 from typing import List, Dict, Any, Optional, Tuple, Set
-from agent_state import AgentState, IntentType, RetrievalResult
+from agent_state import AgentState, RetrievalResult
 from query_rewriter import QueryRewriter
 from file_corpus import FileCorpus
+from evidence_ledger import EvidenceLedger
+from rl_config import get_llm_context_budget
+
+
+# 合法动作集合：解析器据此判定 LLM 输出是否越界并降级
+VALID_ACTIONS = {"search", "refine", "verify", "bridge", "answer"}
 
 
 REACT_SYSTEM_PROMPT = """\
-你是 AgentRL 深度搜索引擎。你正在执行一个 ReAct（思考-行动-观察）循环来回答用户问题。
-
-## 已收集的证据
-{evidence_context}
+你是 AgentRL 深度检索 ReAct 引擎，通过"思考-行动-观察"循环逐步补齐证据。
 
 ## 当前状态
 - 已完成检索轮次: {round_num}/{max_rounds}
 - 已收集文档数: {doc_count}
 
-## 输出格式
-每次输出严格使用以下 JSON 格式之一：
+## 可选动作（每次只输出一个 JSON 对象）
+1) search —— 开启一个全新角度的检索
+   {{"thought": "...", "action": "search", "search_query": "..."}}
+2) refine —— 对上一角度换措辞或同义改写后重搜
+   {{"thought": "...", "action": "refine", "search_query": "..."}}
+3) bridge —— 针对用户消息中"未覆盖方面"补缺口
+   {{"thought": "...", "action": "bridge", "target_aspect": "性能", "search_query": "..."}}
+4) verify —— 对"主张列表"中单来源的重要主张做交叉验证
+   {{"thought": "...", "action": "verify", "target_claim": 1, "search_query": "..."}}
+   （target_claim 是用户消息里编号主张列表的 1-based 序号）
+5) answer —— 证据充分时给出最终回答
+   {{"thought": "...", "action": "answer", "answer": "..."}}
 
-### 如果需要继续搜索：
-```json
-{{
-  "thought": "分析当前证据缺口，说明为什么要搜这个方向",
-  "action": "search",
-  "search_query": "具体的搜索关键词（中文）"
-}}
-```
-
-### 如果证据充分可以回答：
-```json
-{{
-  "thought": "综合所有证据，可以给出完整回答",
-  "action": "answer",
-  "answer": "基于证据的完整回答"
-}}
-```
-
-## 判断标准
-1. 如果已有足够的多角度证据支撑回答 → 选 "answer"
-2. 如果证据有明显缺口（如缺少某个维度的信息）→ 选 "search"
-3. 搜索查询应该针对缺口，不要重复已搜过的内容
-4. 如果已到最大轮次，必须选 "answer" 并基于现有证据回答
+## 决策规则
+- 存在"未覆盖方面"时优先 bridge，把缺口补上再考虑收口。
+- 仅当某条重要主张只有单一来源时才用 verify 交叉验证，不要滥用。
+- 覆盖完整且置信度足够高时用 answer 收口。
+- 到达最后一轮时，必须用 answer 基于现有证据作答，不得再发起检索。
 """
 
 
@@ -145,50 +139,68 @@ class DeepSearchHandler:
         # 本次任务已发出的检索查询（归一化），用于杜绝"同一查询重复检索"
         self._searched_queries: Set[str] = set()
         self.intent_slots: Dict[str, Any] = {}
-
-    def _build_evidence_context(self, state: AgentState) -> str:
-        if not state.evidence:
-            return "（暂无检索证据）"
-        lines = []
-        for i, ev in enumerate(state.evidence, 1):
-            files = [d.get("path", "?") for d in ev.documents]
-            contents = []
-            for d in ev.documents[:3]:
-                c = d.get("content", "")[:150]
-                if c:
-                    contents.append(f"    - {d.get('path', '?')}: {c}")
-            lines.append(f"第{i}轮 [查询: {ev.query_used}]")
-            lines.append(f"  命中文件: {', '.join(files) if files else '无'}")
-            if contents:
-                lines.extend(contents)
-        return "\n".join(lines)
+        # 证据台账：方面覆盖 + 主张置信度，跨轮累积
+        self.ledger = EvidenceLedger()
 
     def _build_user_prompt(self, query: str, state: AgentState) -> str:
-        evidence_ctx = self._build_evidence_context(state)
+        # 单一有界上下文块：证据随 build_llm_context 在 token 预算内裁剪，
+        # 保留 [证据i] 标记（answer_generator 降级路径依赖该标记）。
+        structured = state.build_llm_context(
+            budget_tokens=get_llm_context_budget(), include_evidence=True
+        )
         searched = sorted(self._searched_queries) or ["（尚无）"]
+        claim_lines = []
+        for rank, (_, claim) in enumerate(self.ledger.top_claims(5), 1):
+            sources = "|".join(claim.sources) if claim.sources else "无"
+            claim_lines.append(
+                f"{rank}. (置信度 {claim.confidence:.2f}, 来源 {sources}) {claim.text}"
+            )
+        claims_block = "\n".join(claim_lines) if claim_lines else "（暂无主张）"
         return (
             f"用户原始问题: {query}\n"
             f"已解析意图: {self.intent_slots.get('task_type', '')}；"
             f"核心主题: {self.intent_slots.get('core_topics', [])}\n\n"
-            f"=== 已收集的证据 ===\n{evidence_ctx}\n\n"
+            f"=== 结构化上下文（槽位/证据/对话历史/操作历史） ===\n{structured}\n\n"
             f"=== 已检索过的查询（禁止重复） ===\n"
             + "\n".join(f"- {q}" for q in searched) + "\n\n"
+            f"=== 证据台账 ===\n{self.ledger.summary()}\n"
+            f"编号主张列表（verify 的 target_claim 即此 1-based 序号）：\n{claims_block}\n\n"
             f"当前是第 {state.current_round}/{self.max_rounds} 轮。\n"
             f"请分析证据缺口，输出下一步行动的 JSON。"
         )
 
-    def _parse_react_action(self, llm_output: str) -> Tuple[str, str, str]:
-        """解析 LLM 输出，返回 (action, thought, search_query_or_answer)。"""
+    def _parse_react_action(self, llm_output: str) -> Tuple[str, str, str, Dict[str, Any]]:
+        """解析 LLM 输出，返回 (action, thought, payload, meta)。
+
+        meta 携带动作语义：search/refine/bridge 的 aspect、verify 的 claim_index
+        （JSON 的 1-based target_claim 转 0-based 内部下标）。
+        """
         data = _extract_json(llm_output)
         if data and isinstance(data, dict):
-            action = data.get("action", "answer").lower()
+            action = str(data.get("action", "answer")).lower()
             thought = data.get("thought", "")
-            if action == "search":
-                return "search", thought, data.get("search_query", "")
-            return "answer", thought, data.get("answer", "")
+            if action not in VALID_ACTIONS:
+                # 越界动作降级：有非空 answer 视为作答，否则退回检索
+                action = "answer" if data.get("answer") else "search"
+            if action in ("search", "refine", "bridge"):
+                return action, thought, data.get("search_query", ""), {
+                    "aspect": data.get("target_aspect", "")
+                }
+            if action == "verify":
+                idx = None
+                try:
+                    raw = int(data.get("target_claim"))
+                    if raw >= 1:
+                        idx = raw - 1
+                except (TypeError, ValueError):
+                    idx = None
+                return action, thought, data.get("search_query", ""), {
+                    "aspect": "", "claim_index": idx
+                }
+            return "answer", thought, data.get("answer", ""), {"aspect": ""}
         if "answer" in llm_output.lower():
-            return "answer", llm_output[:200], llm_output
-        return "search", "尝试基于关键词搜索", ""
+            return "answer", llm_output[:200], llm_output, {"aspect": ""}
+        return "search", "尝试基于关键词搜索", "", {"aspect": ""}
 
     # 中文停用字：只承担语法功能，其二元组不能当作"证据命中"探针
     _STOP_CHARS = set(
@@ -313,11 +325,13 @@ class DeepSearchHandler:
             return sq, gaps
         return None, gaps
 
-    def _rule_based_fallback(self, query: str, state: AgentState) -> Tuple[str, str, str]:
+    def _rule_based_fallback(self, query: str, state: AgentState
+                             ) -> Tuple[str, str, str, Dict[str, Any]]:
         """LLM 不可用时的确定性 ReAct 决策：证据缺口驱动 + 查询去重 + 抽取式综合。
 
-        返回 (action, thought, payload)；thought 是真实的缺口分析，而不是把待执行
-        的动作倒填成"思考"。
+        返回 (action, thought, payload, meta)；thought 是真实的缺口分析，而不是把待执行
+        的动作倒填成"思考"。缺口查询命中已知方面名时升级为 bridge，否则为 search；
+        无缺口但存在单来源低置信主张时升级为 verify。
         """
         next_query, gaps = self._select_gap_query(query, state)
         total = len(gaps)
@@ -331,18 +345,69 @@ class DeepSearchHandler:
                 f"缺口分析：{total} 个检索角度已覆盖 {covered_n} 个，已检索 {tried} 次；"
                 f"尚未覆盖 {missing} → 本轮针对「{next_query}」补充证据"
             )
-            return "search", thought, next_query
+            aspects = self._detect_aspects(next_query)
+            if aspects:
+                return "bridge", thought, next_query, {"aspect": aspects[0]}
+            return "search", thought, next_query, {"aspect": ""}
+
+        # 无新角度可检索：若存在单来源且低置信的重要主张，先交叉验证再收口
+        if self.ledger.claims and self.ledger.min_confidence() < 0.55:
+            for idx, claim in enumerate(self.ledger.claims):
+                if len(claim.sources) == 1 and \
+                        self._norm_query(claim.text) not in self._searched_queries:
+                    thought = (
+                        f"缺口分析：检索角度已穷尽，但主张「{claim.text[:40]}」"
+                        f"仅单一来源且整体置信度偏低 → 交叉验证该主张"
+                    )
+                    return "verify", thought, claim.text, {
+                        "aspect": claim.aspect, "claim_index": idx
+                    }
 
         if covered_n:
             reason = f"全部检索角度已被证据覆盖（{covered_n}/{total}）"
         else:
             reason = f"已穷尽 {total} 个检索角度且证据未命中（{tried} 次检索无新增方向）"
         thought = f"缺口分析：{reason}，基于现有 {evidence_n} 轮证据综合回答"
-        return "answer", thought, self._synthesize_answer(query, gaps, state)
+        return "answer", thought, self._synthesize_answer(query, gaps, state, self.ledger), {
+            "aspect": ""
+        }
 
     def _synthesize_answer(self, query: str, gaps: List[Tuple[str, bool]],
-                           state: AgentState) -> str:
-        """抽取式综合：同文件去重取最高分 → 每个文件挑最相关的句子 → 结构化输出。"""
+                           state: AgentState,
+                           ledger: Optional[EvidenceLedger] = None) -> str:
+        """综合回答：台账有主张时按主张聚合（含置信度与未覆盖告警），否则退回抽取式。"""
+        if ledger is not None and ledger.claims:
+            top = ledger.top_claims(5)
+            doc_paths: List[str] = []
+            for _, claim in top:
+                for src in claim.sources:
+                    if src and src not in doc_paths:
+                        doc_paths.append(src)
+            lines = [
+                f"基于 {len(state.evidence)} 轮检索、{len(doc_paths)} 个不同文件、"
+                f"{len(ledger.claims)} 条主张综合如下"
+                f"（整体置信度 {ledger.min_confidence(3):.2f}）：",
+                "",
+            ]
+            uncovered = ledger.required_uncovered
+            if uncovered:
+                lines.append(f"⚠️ 证据不完整：以下方面未覆盖 — {'、'.join(uncovered)}")
+                lines.append("")
+            lines.append("**按主张聚合**")
+            for rank, (_, claim) in enumerate(top, 1):
+                sources = "|".join(claim.sources) if claim.sources else "无"
+                lines.append(
+                    f"{rank}. (得分 {claim.score:.4f}, 置信度 {claim.confidence:.2f}, "
+                    f"来源 {sources}) {claim.text}"
+                )
+            lines += ["", "**检索角度覆盖**"]
+            for sq, cov in gaps:
+                lines.append(f"- [{'已覆盖' if cov else '未覆盖'}] {sq}")
+            lines += ["", "**引用来源**"]
+            lines += [f"- {p}" for p in doc_paths] or ["- （无）"]
+            return "\n".join(lines)
+
+        # 抽取式综合：同文件去重取最高分 → 每个文件挑最相关的句子 → 结构化输出。
         best: Dict[str, Dict] = {}
         for ev in state.evidence:
             for d in ev.documents:
@@ -420,6 +485,9 @@ class DeepSearchHandler:
         query = state.dialog_history[-1].user_query if state.dialog_history else ""
         self.react_steps = []
         self._searched_queries = set()
+        self.ledger = EvidenceLedger()
+        plan = self._build_search_plan(query)
+        self.ledger.set_aspects(plan)
 
         print(f"\n  [Deep Search ReAct] 开始 agentic 检索: {query}")
         if self.llm.available:
@@ -444,26 +512,28 @@ class DeepSearchHandler:
             print(f"\n  === ReAct 第 {state.current_round} 轮 ===")
 
             if self.llm.available:
-                action, thought, payload = self._llm_react_step(query, state)
-                if action == "search":
+                action, thought, payload, meta = self._llm_react_step(query, state)
+                if action in ("search", "refine", "bridge", "verify"):
                     candidate = (payload or "").strip()
                     if not candidate or self._norm_query(candidate) in self._searched_queries:
                         # LLM 给了空查询或重复查询：不允许原地打转，改用缺口驱动决策
                         print("  [LLM→规则] 查询为空或已检索过，改用证据缺口决策")
-                        action, thought, payload = self._rule_based_fallback(query, state)
+                        action, thought, payload, meta = self._rule_based_fallback(query, state)
             else:
-                action, thought, payload = self._rule_based_fallback(query, state)
+                action, thought, payload, meta = self._rule_based_fallback(query, state)
 
             self.react_steps.append({
                 "step": state.current_round,
                 "thought": thought,
                 "action": action,
                 "detail": payload[:200],
+                "meta": meta,
             })
 
             if action == "answer":
                 print(f"  [Thought] {thought[:120]}")
-                print(f"  [Action] → answer")
+                aspect = meta.get("aspect", "")
+                print("  [Action] → answer" + (f"（方面: {aspect}）" if aspect else ""))
                 if payload:
                     state.terminate(payload)
                 break
@@ -476,18 +546,51 @@ class DeepSearchHandler:
             self._searched_queries.add(key)
 
             print(f"  [Thought] {thought[:120]}")
-            print(f"  [Action] → search: {search_query}")
+            aspect_hint = meta.get("aspect", "")
+            if action == "bridge":
+                print(f"  [Action] → bridge({aspect_hint}): {search_query}")
+            elif action == "verify":
+                claim_no = meta.get("claim_index")
+                label = f"主张#{claim_no + 1}" if isinstance(claim_no, int) else "主张"
+                print(f"  [Action] → verify({label}): {search_query}")
+            elif action == "refine":
+                print(f"  [Action] → refine: {search_query}")
+            else:
+                print(f"  [Action] → search: {search_query}")
 
             result = self._iterative_retrieve(search_query, state.current_round)
-            
+
             # 过滤噪声文件
             filtered_docs = self._filter_noise_documents(result.documents)
             result.documents = filtered_docs
-            
+
             state.add_evidence(result)
 
+            # 台账更新：从本轮 top 文档抽取主张，并刷新方面覆盖
+            probes = self._probes(query)
+            for doc in result.documents[:3]:
+                sent = self._best_sentence(doc.get("content", ""), probes)
+                self.ledger.add_claim(
+                    sent, doc.get("path", "") or "", doc.get("score", 0.0), aspect_hint
+                )
+            self.ledger.mark_coverage(self._plan_gaps(query, state))
+
+            # verify：给目标主张追加首个未出现在其 sources 的命中文档作为独立来源
+            if action == "verify":
+                idx = meta.get("claim_index")
+                if isinstance(idx, int) and 0 <= idx < len(self.ledger.claims):
+                    for doc in result.documents:
+                        path = doc.get("path", "") or ""
+                        if path and path not in self.ledger.claims[idx].sources:
+                            if self.ledger.verify(idx, path):
+                                print(f"  [验证] 主张#{idx + 1} 追加独立来源: {path}")
+                            break
+
             if evaluator:
-                done, reason = evaluator.evaluate(state)
+                try:
+                    done, reason = evaluator.evaluate(state, ledger=self.ledger)
+                except TypeError:
+                    done, reason = evaluator.evaluate(state)
                 print(f"  [观察] {reason}")
                 if done:
                     break
@@ -495,7 +598,13 @@ class DeepSearchHandler:
                 print(f"  [观察] 已收集 {len(state.evidence)} 组证据")
 
         if not state.final_answer:
-            done, reason = evaluator.evaluate(state) if evaluator else (True, "已完成检索")
+            if evaluator:
+                try:
+                    done, reason = evaluator.evaluate(state, ledger=self.ledger)
+                except TypeError:
+                    done, reason = evaluator.evaluate(state)
+            else:
+                done, reason = True, "已完成检索"
             if not done:
                 gap_query, _ = self._select_gap_query(query, state)
                 if gap_query:
@@ -515,7 +624,9 @@ class DeepSearchHandler:
             # 收口：只要拿到了证据却还没有答案，就基于现有证据产出可交付的抽取式综合
             if not state.final_answer and state.evidence:
                 print("  [收口] 基于现有证据生成抽取式综合回答")
-                state.terminate(self._synthesize_answer(query, self._plan_gaps(query, state), state))
+                state.terminate(self._synthesize_answer(
+                    query, self._plan_gaps(query, state), state, self.ledger
+                ))
 
         return state
     
@@ -767,10 +878,10 @@ class DeepSearchHandler:
         filtered.sort(key=lambda x: x.get("score", 0.0), reverse=True)
         return filtered[:5]
 
-    def _llm_react_step(self, query: str, state: AgentState) -> Tuple[str, str, str]:
+    def _llm_react_step(self, query: str, state: AgentState
+                        ) -> Tuple[str, str, str, Dict[str, Any]]:
         """执行一步 LLM ReAct 决策。"""
         system = REACT_SYSTEM_PROMPT.format(
-            evidence_context=self._build_evidence_context(state),
             round_num=state.current_round,
             max_rounds=self.max_rounds,
             doc_count=sum(len(ev.documents) for ev in state.evidence),
@@ -783,11 +894,8 @@ class DeepSearchHandler:
             return self._parse_react_action(llm_output)
 
         print("  [LLM] 无输出，回退到规则决策")
-        action, thought, payload = self._rule_based_fallback(query, state)
-        return action, f"{thought}（LLM 无输出）", payload
-
-    def get_react_trace(self) -> List[Dict[str, str]]:
-        return self.react_steps
+        action, thought, payload, meta = self._rule_based_fallback(query, state)
+        return action, f"{thought}（LLM 无输出）", payload, meta
 
     def get_corpus_stats(self) -> Dict:
         return self.corpus.stats()

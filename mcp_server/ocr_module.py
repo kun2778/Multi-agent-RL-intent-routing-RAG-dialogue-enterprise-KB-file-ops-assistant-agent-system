@@ -246,9 +246,8 @@ class TesseractOCR(OCRProvider):
 class RapidOCRProvider(OCRProvider):
     """RapidOCR本地OCR（PP-OCRv4，免费离线，进程内，速度与质量均衡的主力）"""
 
-    def __init__(self):
-        self._engine = None
-        self._available = None
+    _engine = None
+    _available = None
 
     def is_configured(self) -> bool:
         if self._available is None:

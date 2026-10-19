@@ -202,7 +202,7 @@ class OCRHandler:
         if manager is None:
             return self._fallback_tesseract(image_path)
 
-        primary = self._run_provider_chain(manager, image_path)
+        primary = self._recognize_via(manager, image_path)
         if primary is None:
             return self._fallback_tesseract(image_path)
 
@@ -210,17 +210,19 @@ class OCRHandler:
         if primary.confidence < self.VL_FALLBACK_THRESHOLD:
             print(f"  [OCR] 主力置信度 {primary.confidence:.2f} < {self.VL_FALLBACK_THRESHOLD}，"
                   f"触发 PaddleOCR-VL 兜底（约数分钟）...")
-            vl = self._run_vl_fallback(manager, image_path)
+            vl = self._recognize_via(manager, image_path, provider="paddleocr_vl",
+                                     fail_msg="PaddleOCR-VL 兜底失败")
             if vl is not None and (vl.confidence > primary.confidence or not primary.text.strip()):
                 print(f"  [OCR] PaddleOCR-VL 兜底命中 (conf {vl.confidence:.2f})")
                 return vl
         return primary
 
-    def _run_provider_chain(self, manager, image_path: str) -> Optional[OCRResult]:
-        """跑主力 provider 链（RapidOCR -> 云 -> tesseract），返回首个成功结果。"""
+    def _recognize_via(self, manager, image_path: str, provider: Optional[str] = None,
+                       fail_msg: str = "主力链识别失败") -> Optional[OCRResult]:
+        """跑单次 provider 识别：provider 为空走主力链（RapidOCR -> 云 -> tesseract）。"""
         try:
             start_time = time.time()
-            result = manager.recognize(image_path=image_path)
+            result = manager.recognize(image_path=image_path, provider=provider)
             processing_time = int((time.time() - start_time) * 1000)
             if result and result.text:
                 return OCRResult(
@@ -228,28 +230,10 @@ class OCRHandler:
                     confidence=result.confidence,
                     source_file=image_path,
                     processing_time_ms=processing_time,
-                    provider=result.provider,
+                    provider=provider or result.provider,
                 )
         except Exception as e:
-            print(f"  [OCR] 主力链识别失败: {e}")
-        return None
-
-    def _run_vl_fallback(self, manager, image_path: str) -> Optional[OCRResult]:
-        """调用 PaddleOCR-VL provider 兜底。"""
-        try:
-            start_time = time.time()
-            result = manager.recognize(image_path=image_path, provider="paddleocr_vl")
-            processing_time = int((time.time() - start_time) * 1000)
-            if result and result.text:
-                return OCRResult(
-                    text=result.text,
-                    confidence=result.confidence,
-                    source_file=image_path,
-                    processing_time_ms=processing_time,
-                    provider="paddleocr_vl",
-                )
-        except Exception as e:
-            print(f"  [OCR] PaddleOCR-VL 兜底失败: {e}")
+            print(f"  [OCR] {fail_msg}: {e}")
         return None
 
     def _fallback_tesseract(self, image_path: str) -> Optional[OCRResult]:

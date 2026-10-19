@@ -42,13 +42,6 @@ def make_review_dir(base_dir: str, fingerprint_src: str = "") -> str:
     return path
 
 
-def _fmt_mtime(ts: float) -> str:
-    try:
-        return datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-    except (OSError, ValueError, OverflowError):
-        return ''
-
-
 def write_json(path: str, data: Any) -> Dict[str, Any]:
     payload = json.dumps(data, ensure_ascii=False, indent=2, default=_json_default)
     atomic_write_text(path, payload, encoding='utf-8')

@@ -384,9 +384,6 @@ class FileListSearchHandler:
         self.found = False
         self.llm_used = False
 
-    def get_react_trace(self) -> List[Dict[str, Any]]:
-        return self.trace
-
     # ------------------------------------------------------------ 决策
     def _rule_plan(self, spec: FileListSpec) -> List[Tuple[str, str, Dict[str, Any]]]:
         """LLM 缺席时的确定性扫描计划（先扫、必要时补注册表、收口）。"""

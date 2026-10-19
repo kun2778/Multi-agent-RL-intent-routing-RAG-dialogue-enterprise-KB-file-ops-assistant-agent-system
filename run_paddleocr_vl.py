@@ -23,18 +23,9 @@ DEVICE = "cpu"  # 改为 "gpu" 需 >=8GB 显存
 
 from paddleocr import PaddleOCRVL
 
+from paddle_ocr_worker import extract_blocks
+
 IMG_EXTS = (".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp")
-
-
-def extract_texts(res_json):
-    """从 PaddleOCR-VL 输出中按阅读顺序提取 block_content"""
-    blocks = res_json.get("res", {}).get("parsing_res_list", [])
-    out = []
-    for b in blocks:
-        content = (b.get("block_content") or "").strip()
-        if content:
-            out.append({"label": b.get("block_label"), "text": content, "bbox": b.get("block_bbox")})
-    return out
 
 
 def main():
@@ -60,7 +51,7 @@ def main():
         t0 = time.time()
         for res in pipe.predict(fp):
             dt = time.time() - t0
-            items = extract_texts(res.json)
+            items = extract_blocks(res.json)
             print("=" * 60)
             print(f"文件: {os.path.basename(fp)}  |  识别块: {len(items)}  |  耗时: {dt:.1f}s")
             print("=" * 60)

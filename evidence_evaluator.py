@@ -1,6 +1,9 @@
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, TYPE_CHECKING
 from agent_state import AgentState, IntentType, RoutingPath
 from rl_config import get_max_rounds, get_time_threshold
+
+if TYPE_CHECKING:
+    from evidence_ledger import EvidenceLedger
 
 
 OP_INTENTS = {
@@ -10,7 +13,7 @@ OP_INTENTS = {
 
 
 class TerminationPolicy:
-    """终止条件模块（双条件终止判断）。
+    """终止条件模块（三重软条件终止判断）。
 
     终止条件由三部分构成：
       1. 任务完成   ：文件操作已提交成功，或检索证据充分（子查询全部覆盖且无矛盾）
@@ -18,16 +21,25 @@ class TerminationPolicy:
                      上限 max_rounds 与时间预算来自 config/app.yaml 的 rl: 段
       3. 澄清闭环   ：VAGUE 意图不终止，要求用户补充信息后重新路由
 
-    check(state, reward_hint=None) 返回:
+    检索类任务的证据充分性：
+      - 当提供 ledger 时，采用三重软条件（triple soft condition）：
+          a. 方面覆盖：ledger.required_uncovered 为空
+          b. 主张置信度：ledger.min_confidence() >= min_confidence_floor（默认 0.55）
+          c. 无矛盾：_detect_contradictions 返回 False
+      - 当未提供 ledger 时，沿用原有启发式路径（质量分数/噪声/关键槽位/文件多样性），
+        保持与现有调用完全一致（向后兼容）。
+
+    check(state, reward_hint=None, reward_key=None, ledger=None) 返回:
       (should_terminate, reason, reward_key)
     reward_hint 可携带外部已确定的奖励键（如文件操作成功 add_success）。
     """
 
-    def __init__(self, max_rounds: int = None, time_threshold: float = None):
+    def __init__(self, max_rounds: int = None, time_threshold: float = None, min_confidence_floor: float = 0.55):
         # 默认值来自 config/app.yaml 的 rl: 段（max_rounds / retrieval_budget 秒），
         # 配置缺失时回退代码内置默认值；显式传参优先。
         self.max_rounds = get_max_rounds() if max_rounds is None else max_rounds
         self.time_threshold = get_time_threshold() if time_threshold is None else time_threshold
+        self.min_confidence_floor = min_confidence_floor
         # 跨轮证据充分性裁决器（新增模块，不可用时自动回退原启发式）
         try:
             from evidence_adjudicator import CrossRoundEvidenceAdjudicator
@@ -35,7 +47,7 @@ class TerminationPolicy:
         except Exception:
             self.adjudicator = None
 
-    def check(self, state: AgentState, reward_hint: str = None, reward_key: str = None) -> Tuple[bool, str, str]:
+    def check(self, state: AgentState, reward_hint: str = None, reward_key: str = None, ledger: Optional["EvidenceLedger"] = None) -> Tuple[bool, str, str]:
         # reward_key 兼容别名
         if reward_key and not reward_hint:
             reward_hint = reward_key
@@ -57,7 +69,7 @@ class TerminationPolicy:
 
         # ---- 检索类任务：证据充分性 + 预算 ----
         if intent in (IntentType.QUERY, IntentType.DEEP_SEARCH):
-            sufficient, reason = self._check_evidence(state)
+            sufficient, reason = self._check_evidence(state, ledger)
             if sufficient:
                 return True, reason, "evidence_sufficient"
             return False, reason, "insufficient_evidence"
@@ -69,13 +81,13 @@ class TerminationPolicy:
         # 当前无明确意图（兜底）：任务进行中
         return False, "任务进行中", ""
 
-    def evaluate(self, state: AgentState, reward_hint: str = None) -> Tuple[bool, str]:
+    def evaluate(self, state: AgentState, reward_hint: str = None, ledger: Optional["EvidenceLedger"] = None) -> Tuple[bool, str]:
         """兼容 evaluate() 接口（返回 (done, reason)）。"""
-        done, reason, _ = self.check(state, reward_hint)
+        done, reason, _ = self.check(state, reward_hint=reward_hint, ledger=ledger)
         return done, reason
 
     # ------------------------------------------------------------------ 证据
-    def _check_evidence(self, state: AgentState) -> Tuple[bool, str]:
+    def _check_evidence(self, state: AgentState, ledger: Optional["EvidenceLedger"] = None) -> Tuple[bool, str]:
         """检查证据充分性，基于证据覆盖度和质量，而不是轮数。"""
         if not state.evidence:
             return False, "尚未收集到证据（无检索结果）"
@@ -90,6 +102,18 @@ class TerminationPolicy:
             if verdict is not None:
                 return verdict
 
+        # 当提供 ledger 时，采用三重软条件（triple soft condition）
+        if ledger is not None:
+            uncovered = ledger.required_uncovered
+            if uncovered:
+                return False, f"方面未覆盖: {', '.join(uncovered)}，需继续检索"
+            conf = ledger.min_confidence()
+            if conf < self.min_confidence_floor:
+                return False, f"关键主张置信度不足 ({conf:.2f} < {self.min_confidence_floor:.2f})，需交叉验证"
+            ratio = ledger.coverage_ratio
+            return True, f"三重条件满足（方面覆盖 {ratio:.0%}，top3 置信度 {conf:.2f}，无矛盾），可以生成答案"
+
+        # ledger 为 None 时，沿用原有启发式路径（保持完全一致）
         # 计算证据质量指标
         quality_score = self._calculate_evidence_quality(state)
         
@@ -200,14 +224,18 @@ class TerminationPolicy:
 
 
 class EvidenceEvaluator:
-    """兼容旧接口的证据充分性评估（检索类任务的终止条件之一）。"""
+    """兼容旧接口的证据充分性评估（检索类任务的终止条件之一）。
+
+    支持三重软条件（方面覆盖 + 主张置信度 + 无矛盾）与可选 ledger 参数，
+    未传入 ledger 时行为与原有逻辑完全一致。
+    """
 
     def __init__(self):
         self.policy = TerminationPolicy()
 
-    def evaluate(self, state: AgentState) -> Tuple[bool, str]:
-        done, reason, _reward = self.policy.check(state)
+    def evaluate(self, state: AgentState, ledger: Optional["EvidenceLedger"] = None) -> Tuple[bool, str]:
+        done, reason, _reward = self.policy.check(state, ledger=ledger)
         return done, reason
 
-    def check(self, state: AgentState, reward_hint: str = None) -> Tuple[bool, str, str]:
-        return self.policy.check(state, reward_hint)
+    def check(self, state: AgentState, reward_hint: str = None, ledger: Optional["EvidenceLedger"] = None) -> Tuple[bool, str, str]:
+        return self.policy.check(state, reward_hint=reward_hint, ledger=ledger)

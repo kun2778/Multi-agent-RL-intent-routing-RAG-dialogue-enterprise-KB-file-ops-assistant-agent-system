@@ -64,7 +64,7 @@ from agent_state import (
 )
 from query_rewriter import QueryRewriter
 from llm_intent import LLMIntentClassifier
-from intent_retriever import get_intent_retriever
+from intent_retriever import VERBATIM_MIN_SIM, get_intent_retriever
 from transformer_arch import (
     TransformerIntentQNetwork, TransformerSubIntentQNetwork,
     TransformerSlotExtractionNetwork, EngramConditionalMemory,
@@ -1363,8 +1363,18 @@ class MetaAgent:
         for intent, score, source in candidates:
             source_scores[source] = (intent, score)
 
-        final_intent = max(scores, key=lambda k: scores[k]["score"])
-        final_conf = _shared_vote_confidence(scores, final_intent)
+        # 近逐字命中短路：语料标签即权威（与 agent_rl.classify_intent 同
+        # 口径，常量见 intent_retriever.VERBATIM_MIN_SIM）。否则策略/规则
+        # 路的高置信错票会在聚合中压过检索路的逐字正确票。
+        # verbatim_hit 同时用于短路采纳与跳过末尾 guard（guard 的关键词
+        # 启发式会误伤逐字命中的正确标签，同 single 侧 return 语义）。
+        verbatim_hit = ret_intent is not None and ret_conf >= VERBATIM_MIN_SIM
+        if verbatim_hit:
+            final_intent = ret_intent
+            final_conf = float(min(1.0, ret_conf))
+        else:
+            final_intent = max(scores, key=lambda k: scores[k]["score"])
+            final_conf = _shared_vote_confidence(scores, final_intent)
 
         ranked = sorted((v["score"] for v in scores.values()), reverse=True)
         stats["margin"] = float(ranked[0] - ranked[1]) if len(ranked) > 1 else float(ranked[0])
@@ -1393,7 +1403,8 @@ class MetaAgent:
         if final_conf < self.CONFIDENCE_THRESHOLD:
             final_intent, final_conf = self._engram_assist(obs, final_intent, final_conf)
 
-        final_intent = self._semantic_conflict_guard(query, final_intent, scores)
+        if not verbatim_hit:
+            final_intent = self._semantic_conflict_guard(query, final_intent, scores)
         self._last_confidence = final_conf
         return final_intent, final_conf
 

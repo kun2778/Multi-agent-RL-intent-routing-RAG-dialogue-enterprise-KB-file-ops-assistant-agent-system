@@ -37,10 +37,9 @@ def _emit(obj):
     sys.stdout.flush()
 
 
-def _extract_blocks(res_json):
+def extract_blocks(res_json):
     blocks = res_json.get("res", {}).get("parsing_res_list", []) or []
     out = []
-    texts = []
     for b in blocks:
         content = (b.get("block_content") or "").strip()
         if content:
@@ -49,8 +48,7 @@ def _extract_blocks(res_json):
                 "text": content,
                 "bbox": b.get("block_bbox"),
             })
-            texts.append(content)
-    return out, "\n".join(texts)
+    return out
 
 
 def main():
@@ -88,7 +86,8 @@ def main():
             result_text = ""
             blocks = []
             for res in pipe.predict(image_path):
-                blocks, result_text = _extract_blocks(res.json)
+                blocks = extract_blocks(res.json)
+                result_text = "\n".join(b["text"] for b in blocks)
             conf = _estimate_conf(blocks)
             _emit({
                 "ok": True,
